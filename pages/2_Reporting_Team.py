@@ -370,7 +370,7 @@ def run_vault_cash_report(file_path: str):
     )
 
     wb.save(file_path)
-
+NotImplementedError("Vault Cash logic not pasted yet")
 
 def run_pending_collection_entry(excel_path):
     import pandas as pd
@@ -1558,7 +1558,7 @@ def extract_for_sheet(sheet_name: str, file_path: str):
             df_f = df[df[status_col] == "SUCCESS"].copy()
             total = pd.to_numeric(df_f[amount_col], errors="coerce").fillna(0).sum()
             return build_branch_amount_map(df_f, branch_col, amount_col), float(total), ""
-        
+       
         if s == "twinline":
             branch_candidates = ["Branch Code", "Branch", "Branch ID", "B CODE", "Code", "Additional Information 2"]
             amount_candidates = ["Amount", "AMOUNT", "Transaction Amount", "Bill Amount", "ORIG_AMNT", "Drop Amount", "Net", "Net Amount"]
@@ -1929,7 +1929,6 @@ def write_df_fast(ws, df: pd.DataFrame, format_map: dict):
                 c.number_format = fmt
 
 
-@st.cache_data(show_spinner=False)
 def read_ce_sheets(path: str) -> dict:
     return pd.read_excel(path, sheet_name=None, engine="openpyxl")
 
@@ -1960,9 +1959,6 @@ def read_arrear_any(path: str, original_name: str, use_csv: bool) -> pd.DataFram
 # ============================================================
 # DVC CONSOLIDATE LOGIC (Reusable)
 # ============================================================
-import gc
-
-@st.cache_data(show_spinner=False)
 def build_dvc_consolidate(jlg_path: str, il_path: str) -> pd.DataFrame:
     header_map_jlg = [
         'COMPANY_ID', 'ZoneName', 'region_name', 'unit_name', 'cluster_name',
@@ -1981,34 +1977,20 @@ def build_dvc_consolidate(jlg_path: str, il_path: str) -> pd.DataFrame:
         'od_days', 'Spouse_Name'
     ]
 
-    # --- JLG (already optimized) ---
     jlg_df = pd.read_excel(jlg_path, engine="openpyxl", usecols=header_map_jlg)
+    il_df = pd.read_excel(il_path, engine="openpyxl")
 
-    # --- IL: read only required columns + rename sources we use ---
-    # IL has different casing/column names; so read minimal set safely
-    il_need_extra = {"zone_name", "area_name", "report_date", "branch_name"}  # used in your rename logic
-    need_upper = set([c.upper() for c in header_map_jlg]) | set([c.upper() for c in il_need_extra])
-
-    def il_usecols(col_name):
-        # case-insensitive include
-        return str(col_name).strip().upper() in need_upper
-
-    il_df = pd.read_excel(il_path, engine="openpyxl", usecols=il_usecols)
-
-    # --- Your same rename logic (unchanged) ---
     il_df.rename(columns={
         'zone_name': 'ZoneName',
         'area_name': 'unit_name',
         'report_date': 'ReportDate'
     }, inplace=True)
 
-    # --- Your same branch_id build logic (unchanged) ---
     if 'branch_name' in il_df.columns:
         il_df['branch_id'] = il_df['branch_name'].astype(str).str[:5]
     else:
         il_df['branch_id'] = None
 
-    # --- Your same alignment logic (unchanged) ---
     il_aligned_df = pd.DataFrame({c: il_df[c] if c in il_df.columns else None for c in header_map_jlg})
     consolidated_df = pd.concat([jlg_df, il_aligned_df], ignore_index=True)
 
@@ -2065,10 +2047,6 @@ def build_dvc_consolidate(jlg_path: str, il_path: str) -> pd.DataFrame:
     consolidated_df['same_day_repayment_received'] = consolidated_df[['same_day_demand', 'collection_exc_advance']].min(axis=1)
     consolidated_df['od_received'] = (consolidated_df['collection_exc_advance'] - consolidated_df['same_day_demand']).clip(lower=0)
     consolidated_df['same_day_arrear'] = (consolidated_df['same_day_demand'] - consolidated_df['same_day_repayment_received']).clip(lower=0)
-
-    # free temp dfs
-    del il_df, il_aligned_df, jlg_df
-    gc.collect()
 
     return consolidated_df
 
@@ -2667,9 +2645,7 @@ if selected_report == "1) Collection Efficiency Report":
                     dvc_bytes = f.read()
                 with open(zip_path, "rb") as f:
                     zip_bytes = f.read()
-                import gc
-del consolidated_df, ce_sheets, arr_df
-gc.collect() 
+
             progress.progress(100)
             status.empty()
             timer_box.empty()
