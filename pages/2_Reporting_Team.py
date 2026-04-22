@@ -1929,51 +1929,8 @@ def write_df_fast(ws, df: pd.DataFrame, format_map: dict):
                 c.number_format = fmt
 
 
-def get_ce_sheet_names(path: str) -> list:
-    xl = pd.ExcelFile(path, engine="openpyxl")
-    return xl.sheet_names
-
-
-def read_ce_sheet(path: str, sheet_name: str) -> pd.DataFrame:
-    return pd.read_excel(path, sheet_name=sheet_name, engine="openpyxl")
-
-
-def get_hub_list_from_ce(path: str) -> list:
-    hub_values = []
-    seen = set()
-
-    for sh_name in get_ce_sheet_names(path):
-        df_sh = read_ce_sheet(path, sh_name)
-        df_sh.columns = df_sh.columns.astype(str).str.strip()
-
-        if "Hub" not in df_sh.columns:
-            continue
-
-        for hub in df_sh["Hub"].dropna().tolist():
-            hub_key = str(hub).strip()
-            if hub_key and hub_key not in seen:
-                seen.add(hub_key)
-                hub_values.append(hub)
-
-    return hub_values
-
-
-def iter_ce_sheets_for_hub(path: str, hub):
-    hub_text = str(hub).strip()
-
-    for sh_name in get_ce_sheet_names(path):
-        df_sh = read_ce_sheet(path, sh_name)
-        df_sh.columns = df_sh.columns.astype(str).str.strip()
-
-        if "Hub" not in df_sh.columns:
-            continue
-
-        filtered = df_sh[df_sh["Hub"].astype(str).str.strip() == hub_text].copy()
-        if filtered.empty:
-            continue
-
-        filtered = recompute_grand_total(filtered, hub_col="Hub")
-        yield sh_name, filtered
+def read_ce_sheets(path: str) -> dict:
+    return pd.read_excel(path, sheet_name=None, engine="openpyxl")
 
 
 def read_csv_with_fallback(path, compression=None):
@@ -1997,7 +1954,6 @@ def read_arrear_any(path: str, original_name: str, use_csv: bool) -> pd.DataFram
         return read_csv_with_fallback(path, compression="zip")
 
     return pd.read_excel(path, engine="openpyxl")
-
 
 # ============================================================
 # DVC CONSOLIDATE LOGIC (Reusable)
@@ -2505,28 +2461,26 @@ def lpc_generate_report(in_path: str, out_path: str, sheet_name=0):
 # TAB 1: FULL AUTOMATION
 # ============================================================
 if selected_report == "1) Collection Efficiency Report":
-    st.subheader("📊 Collection Efficiency Report")
+    st.subheader("🏦 Collection Efficiency")
+    st.caption("Upload 4 files → Run → Download DVC.xlsx (with Arrear_Advance sheet) + Hub-wise ZIP")
 
-    ce_file = st.file_uploader(
-        "Upload Collection Efficiency.xlsx",
-        type=["xlsx"],
-        key="ce"
-    )
-    jlg_file = st.file_uploader(
-        "Upload DVC JLG.xlsx",
-        type=["xlsx"],
-        key="jlg"
-    )
-    il_file = st.file_uploader(
-        "Upload DVC IL.xlsx",
-        type=["xlsx"],
-        key="il"
-    )
-    arrear_file = st.file_uploader(
-        "Upload Arrear file (.csv / .zip / .xlsx)",
-        type=["csv", "zip", "xlsx"],
-        key="arrear"
-    )
+    c1, c2 = st.columns(2)
+    with c1:
+        ce_file = st.file_uploader(
+            "1) Upload Collection Efficiency.xlsx",
+            type=["xlsx"],
+            help="Must contain a column named 'Hub' in at least one sheet.",
+            key="ce"
+        )
+        jlg_file = st.file_uploader("2) Upload DVC JLG.xlsx", type=["xlsx"], key="jlg")
+    with c2:
+        il_file = st.file_uploader("3) Upload DVC IL.xlsx", type=["xlsx"], key="il")
+        arrear_file = st.file_uploader(
+            "4) Upload Arrear JLG & IL (ZIP/CSV/XLSX)",
+            type=["zip", "csv", "xlsx"],
+            help="Best: upload ZIP containing a single CSV with column 'zone_name'.",
+            key="arrear"
+        )
 
     use_csv_mode = st.checkbox("⚡ Use CSV mode for Arrear (faster)", value=True, key="csvmode")
     st.caption("Tip: If Arrear CSV is >200MB, ZIP it and upload the .zip (usually <200MB).")
@@ -2548,7 +2502,7 @@ if selected_report == "1) Collection Efficiency Report":
                 arrear_ext = os.path.splitext(arrear_file.name)[1].lower()
                 arrear_path = os.path.join(workdir, f"Arrear{arrear_ext}")
 
-                status.write("Saving uploaded files.")
+                status.write("Saving uploaded files...")
                 save_uploaded_file(ce_file, ce_path)
                 save_uploaded_file(jlg_file, jlg_path)
                 save_uploaded_file(il_file, il_path)
@@ -2557,10 +2511,10 @@ if selected_report == "1) Collection Efficiency Report":
                 progress.progress(10)
                 timer_box.write(f"Elapsed: {time.time()-t0:.1f}s")
 
-                status.write("Creating DVC consolidated file.")
+                status.write("Creating DVC consolidated file...")
                 consolidated_df = build_dvc_consolidate(jlg_path, il_path)
 
-                status.write("Creating Arrear_Advance sheet (cust_id pivot).")
+                status.write("Creating Arrear_Advance sheet (cust_id pivot)...")
                 arrear_adv_df = build_arrear_advance_sheet(consolidated_df)
 
                 dvc_output_path = os.path.join(workdir, "DVC.xlsx")
@@ -2571,10 +2525,15 @@ if selected_report == "1) Collection Efficiency Report":
                 progress.progress(35)
                 timer_box.write(f"Elapsed after DVC write: {time.time()-t0:.1f}s")
 
-                status.write("Reading Collection Efficiency.")
-                hub_list = get_hub_list_from_ce(ce_path)
+                status.write("Reading Collection Efficiency...")
+                ce_sheets = read_ce_sheets(ce_path)
 
-                if not hub_list:
+                hub_list = None
+                for _, d in ce_sheets.items():
+                    if "Hub" in d.columns:
+                        hub_list = d["Hub"].dropna().unique()
+                        break
+                if hub_list is None or len(hub_list) == 0:
                     raise ValueError("No Hub values found in Collection Efficiency.xlsx (column 'Hub').")
 
                 progress.progress(45)
@@ -2594,7 +2553,7 @@ if selected_report == "1) Collection Efficiency Report":
                 progress.progress(55)
                 timer_box.write(f"Elapsed after Arrear ready: {time.time()-t0:.1f}s")
 
-                status.write("Creating Hub-wise folders/files.")
+                status.write("Creating Hub-wise folders/files...")
                 hubwise_root = os.path.join(workdir, "Hub wise")
                 os.makedirs(hubwise_root, exist_ok=True)
 
@@ -2609,7 +2568,16 @@ if selected_report == "1) Collection Efficiency Report":
                     wb_ce.remove(wb_ce.active)
                     ce_written = 0
 
-                    for sh_name, filtered in iter_ce_sheets_for_hub(ce_path, hub):
+                    for sh_name, df_sh in ce_sheets.items():
+                        if "Hub" not in df_sh.columns:
+                            continue
+
+                        filtered = df_sh[df_sh["Hub"] == hub].copy()
+                        if filtered.empty:
+                            continue
+
+                        filtered = recompute_grand_total(filtered, hub_col="Hub")
+
                         ws_ = wb_ce.create_sheet(title=safe_sheet_title(sh_name))
                         fmt_map = build_format_map(filtered, hub_col="Hub")
                         write_df_fast(ws_, filtered, fmt_map)
@@ -2661,41 +2629,47 @@ if selected_report == "1) Collection Efficiency Report":
                     arrear_out_csv = os.path.join(hub_folder, "Arrear JLG & IL.csv")
 
                     if ar_hub_df.empty:
-                        pd.DataFrame(columns=arr_df.columns).to_csv(
-                            arrear_out_csv,
-                            index=False,
-                            encoding="utf-8-sig"
-                        )
+                        pd.DataFrame(columns=arr_df.columns).to_csv(arrear_out_csv, index=False, encoding="utf-8-sig")
                     else:
-                        ar_hub_df.to_csv(
-                            arrear_out_csv,
-                            index=False,
-                            encoding="utf-8-sig"
-                        )
+                        ar_hub_df.to_csv(arrear_out_csv, index=False, encoding="utf-8-sig")
 
-                    pct = 55 + int((i / total_hubs) * 35)
-                    progress.progress(min(pct, 90))
-                    timer_box.write(f"Elapsed after HUB {i}/{total_hubs}: {time.time()-t0:.1f}s")
+                    progress.progress(55 + int(40 * (i / max(total_hubs, 1))))
 
-                status.write("Creating final ZIP...")
-                zip_path = os.path.join(workdir, "Final_Reports.zip")
-                zip_folder(workdir, zip_path)
+                status.write("Packaging ZIP...")
+                zip_path = os.path.join(workdir, "Hub_Wise_Output.zip")
+                zip_folder(hubwise_root, zip_path)
+                progress.progress(98)
 
-                progress.progress(100)
-                status.write("Done ✅")
-                timer_box.write(f"Total elapsed: {time.time()-t0:.1f}s")
-
+                with open(dvc_output_path, "rb") as f:
+                    dvc_bytes = f.read()
                 with open(zip_path, "rb") as f:
-                    st.download_button(
-                        "⬇️ Download Final Reports ZIP",
-                        data=f,
-                        file_name="Final_Reports.zip",
-                        mime="application/zip",
-                        use_container_width=True
-                    )
+                    zip_bytes = f.read()
+
+            progress.progress(100)
+            status.empty()
+            timer_box.empty()
+            st.success("✅ Done. Download outputs below.")
+
+            d1, d2 = st.columns(2)
+            with d1:
+                st.download_button(
+                    "⬇️ Download DVC.xlsx (with Arrear_Advance sheet)",
+                    data=dvc_bytes,
+                    file_name="DVC.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            with d2:
+                st.download_button(
+                    "⬇️ Download Hub-wise Output (ZIP)",
+                    data=zip_bytes,
+                    file_name="Hub_Wise_Output.zip",
+                    mime="application/zip",
+                    use_container_width=True
+                )
 
         except Exception as e:
-            st.error("❌ Error occurred. Full details below:")
+            st.error("Error occurred. Full details below:")
             st.exception(e)
 
 
