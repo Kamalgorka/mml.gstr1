@@ -28,8 +28,6 @@ from openpyxl.utils import get_column_letter
 
 from ui import load_global_css
 
-st.set_page_config(page_title="Collection Efficiency Automation", page_icon="📊", layout="wide")
-load_global_css()
 # ----------------------------
 # Vault Cash Logic (Single-file version)
 # ----------------------------
@@ -1795,6 +1793,7 @@ def run_cms_recon_streamlit(format_file: str, statements_folder: str, cms_ledger
 # PAGE UI
 # ============================================================
 st.set_page_config(page_title="Collection Efficiency Automation", page_icon="📊", layout="wide")
+load_global_css()
 st.title("📊 Reporting Team- Reports Automisation")
 
 
@@ -2478,9 +2477,18 @@ if selected_report == "1) Collection Efficiency Report":
             help="Must contain a column named 'Hub' in at least one sheet.",
             key="ce"
         )
-        jlg_file = st.file_uploader("2) Upload DVC JLG.xlsx", type=["xlsx"], key="jlg")
+        jlg_file = st.file_uploader(
+            "2) Upload DVC JLG.xlsx",
+            type=["xlsx"],
+            key="jlg"
+        )
+
     with c2:
-        il_file = st.file_uploader("3) Upload DVC IL.xlsx", type=["xlsx"], key="il")
+        il_file = st.file_uploader(
+            "3) Upload DVC IL.xlsx",
+            type=["xlsx"],
+            key="il"
+        )
         arrear_file = st.file_uploader(
             "4) Upload Arrear JLG & IL (ZIP/CSV/XLSX)",
             type=["zip", "csv", "xlsx"],
@@ -2488,11 +2496,20 @@ if selected_report == "1) Collection Efficiency Report":
             key="arrear"
         )
 
-    use_csv_mode = st.checkbox("⚡ Use CSV mode for Arrear (faster)", value=True, key="csvmode")
+    use_csv_mode = st.checkbox(
+        "⚡ Use CSV mode for Arrear (faster)",
+        value=True,
+        key="csvmode"
+    )
     st.caption("Tip: If Arrear CSV is >200MB, ZIP it and upload the .zip (usually <200MB).")
 
     all_uploaded = all([ce_file, jlg_file, il_file, arrear_file])
-    run_btn = st.button("🚀 Run Automation", disabled=not all_uploaded, use_container_width=True, key="run_full")
+    run_btn = st.button(
+        "🚀 Run Automation",
+        disabled=not all_uploaded,
+        use_container_width=True,
+        key="run_full"
+    )
 
     if run_btn:
         try:
@@ -2515,7 +2532,7 @@ if selected_report == "1) Collection Efficiency Report":
                 save_uploaded_file(arrear_file, arrear_path)
                 status.write("Checkpoint 1: uploaded files saved")
                 progress.progress(10)
-                timer_box.write(f"Elapsed: {time.time()-t0:.1f}s")
+                timer_box.write(f"Elapsed: {time.time() - t0:.1f}s")
 
                 status.write("Creating DVC consolidated file...")
                 consolidated_df = build_dvc_consolidate(jlg_path, il_path)
@@ -2532,7 +2549,7 @@ if selected_report == "1) Collection Efficiency Report":
 
                 status.write("Checkpoint 4: master DVC.xlsx saved")
                 progress.progress(35)
-                timer_box.write(f"Elapsed after DVC write: {time.time()-t0:.1f}s")
+                timer_box.write(f"Elapsed after DVC write: {time.time() - t0:.1f}s")
 
                 status.write("Reading Collection Efficiency...")
                 ce_sheet_names = get_ce_sheet_names(ce_path)
@@ -2565,11 +2582,12 @@ if selected_report == "1) Collection Efficiency Report":
                     if c.strip().lower() == "zone_name":
                         zone_col = c
                         break
+
                 if zone_col is None:
                     raise ValueError("Arrear file: Column 'zone_name' not found.")
 
                 progress.progress(55)
-                timer_box.write(f"Elapsed after Arrear ready: {time.time()-t0:.1f}s")
+                timer_box.write(f"Elapsed after Arrear ready: {time.time() - t0:.1f}s")
 
                 status.write("Creating Hub-wise folders/files...")
                 hubwise_root = os.path.join(workdir, "Hub wise")
@@ -2580,6 +2598,7 @@ if selected_report == "1) Collection Efficiency Report":
 
                 for i, hub in enumerate(hub_list, start=1):
                     status.write(f"Checkpoint 7: starting hub {i}/{total_hubs} | hub={hub}")
+
                     hub_folder = os.path.join(hubwise_root, clean_name_for_folder(hub))
                     os.makedirs(hub_folder, exist_ok=True)
 
@@ -2608,18 +2627,18 @@ if selected_report == "1) Collection Efficiency Report":
 
                         filtered = recompute_grand_total(filtered, hub_col="Hub")
 
-                        ws_ = wb_ce.create_sheet(title=safe_sheet_title(sh_name))
+                        ws_ce = wb_ce.create_sheet(title=safe_sheet_title(sh_name))
                         fmt_map = build_format_map(filtered, hub_col="Hub")
-                        write_df_fast(ws_, filtered, fmt_map)
+                        write_df_fast(ws_ce, filtered, fmt_map)
                         ce_written += 1
 
                         del filtered
                         gc.collect()
 
                     if ce_written == 0:
-                        ws_ = wb_ce.create_sheet(title="Info")
-                        ws_["A1"] = f"No Collection Efficiency data for HUB = {hub}"
-                        ws_["A1"].font = Font(bold=True)
+                        ws_info = wb_ce.create_sheet(title="Info")
+                        ws_info["A1"] = f"No Collection Efficiency data for HUB = {hub}"
+                        ws_info["A1"].font = Font(bold=True)
 
                     wb_ce.save(os.path.join(hub_folder, "Collection Efficiency.xlsx"))
                     status.write(f"Checkpoint 8: CE workbook saved | hub={hub}")
@@ -2663,7 +2682,8 @@ if selected_report == "1) Collection Efficiency Report":
 
                     wb_dvc.save(os.path.join(hub_folder, "DVC.xlsx"))
                     status.write(f"Checkpoint 9: DVC workbook saved | hub={hub}")
-                    if 'dvc_hub_df' in locals():
+
+                    if "dvc_hub_df" in locals():
                         del dvc_hub_df
                     del wb_dvc
                     gc.collect()
@@ -2674,11 +2694,15 @@ if selected_report == "1) Collection Efficiency Report":
 
                     if ar_hub_df.empty:
                         pd.DataFrame(columns=arr_df.columns).to_csv(
-                            arrear_out_csv, index=False, encoding="utf-8-sig"
+                            arrear_out_csv,
+                            index=False,
+                            encoding="utf-8-sig"
                         )
                     else:
                         ar_hub_df.to_csv(
-                            arrear_out_csv, index=False, encoding="utf-8-sig"
+                            arrear_out_csv,
+                            index=False,
+                            encoding="utf-8-sig"
                         )
 
                     del ar_hub_df
@@ -2694,6 +2718,7 @@ if selected_report == "1) Collection Efficiency Report":
 
                 with open(dvc_output_path, "rb") as f:
                     dvc_bytes = f.read()
+
                 with open(zip_path, "rb") as f:
                     zip_bytes = f.read()
 
@@ -2703,6 +2728,7 @@ if selected_report == "1) Collection Efficiency Report":
             st.success("✅ Done. Download outputs below.")
 
             d1, d2 = st.columns(2)
+
             with d1:
                 st.download_button(
                     "⬇️ Download DVC.xlsx (with Arrear_Advance sheet)",
@@ -2711,6 +2737,7 @@ if selected_report == "1) Collection Efficiency Report":
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
+
             with d2:
                 st.download_button(
                     "⬇️ Download Hub-wise Output (ZIP)",
