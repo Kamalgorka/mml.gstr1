@@ -2507,15 +2507,17 @@ if selected_report == "1) Collection Efficiency Report":
                 save_uploaded_file(jlg_file, jlg_path)
                 save_uploaded_file(il_file, il_path)
                 save_uploaded_file(arrear_file, arrear_path)
-
+                status.write("Checkpoint 1: uploaded files saved")
                 progress.progress(10)
                 timer_box.write(f"Elapsed: {time.time()-t0:.1f}s")
 
                 status.write("Creating DVC consolidated file...")
                 consolidated_df = build_dvc_consolidate(jlg_path, il_path)
+                status.write(f"Checkpoint 2: DVC consolidated built | rows={len(consolidated_df)}")
 
                 status.write("Creating Arrear_Advance sheet (cust_id pivot)...")
                 arrear_adv_df = build_arrear_advance_sheet(consolidated_df)
+                status.write(f"Checkpoint 3: Arrear_Advance built | rows={len(arrear_adv_df)}")
 
                 dvc_output_path = os.path.join(workdir, "DVC.xlsx")
                 with pd.ExcelWriter(dvc_output_path, engine="openpyxl") as writer:
@@ -2527,6 +2529,7 @@ if selected_report == "1) Collection Efficiency Report":
 
                 status.write("Reading Collection Efficiency...")
                 ce_sheets = read_ce_sheets(ce_path)
+                status.write(f"Checkpoint 5: hub list prepared | hubs={len(hub_list)} | values={hub_list}")
 
                 hub_list = None
                 for _, d in ce_sheets.items():
@@ -2541,6 +2544,7 @@ if selected_report == "1) Collection Efficiency Report":
                 status.write("Preparing Arrear data...")
                 arr_df = read_arrear_any(arrear_path, arrear_file.name, use_csv_mode)
                 arr_df.columns = arr_df.columns.astype(str).str.strip()
+                status.write(f"Checkpoint 6: arrear loaded | rows={len(arr_df)} | cols={len(arr_df.columns)}")
 
                 zone_col = None
                 for c in arr_df.columns:
@@ -2561,6 +2565,7 @@ if selected_report == "1) Collection Efficiency Report":
                 dvc_hub_col = "hub" if "hub" in consolidated_df.columns else ("Hub" if "Hub" in consolidated_df.columns else None)
 
                 for i, hub in enumerate(hub_list, start=1):
+                    status.write(f"Checkpoint 7: starting hub {i}/{total_hubs} | hub={hub}")
                     hub_folder = os.path.join(hubwise_root, clean_name_for_folder(hub))
                     os.makedirs(hub_folder, exist_ok=True)
 
@@ -2589,6 +2594,7 @@ if selected_report == "1) Collection Efficiency Report":
                         ws_["A1"].font = Font(bold=True)
 
                     wb_ce.save(os.path.join(hub_folder, "Collection Efficiency.xlsx"))
+                    status.write(f"Checkpoint 8: CE workbook saved | hub={hub}")
 
                     wb_dvc = Workbook()
                     wb_dvc.remove(wb_dvc.active)
@@ -2624,6 +2630,7 @@ if selected_report == "1) Collection Efficiency Report":
                             ws2.auto_filter.ref = ws2.dimensions
 
                     wb_dvc.save(os.path.join(hub_folder, "DVC.xlsx"))
+                    status.write(f"Checkpoint 9: DVC workbook saved | hub={hub}")
 
                     ar_hub_df = arr_df[arr_df[zone_col].astype(str).str.strip() == str(hub).strip()].copy()
                     arrear_out_csv = os.path.join(hub_folder, "Arrear JLG & IL.csv")
