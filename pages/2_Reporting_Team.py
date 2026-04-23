@@ -369,7 +369,7 @@ def run_vault_cash_report(file_path: str):
     )
 
     wb.save(file_path)
-NotImplementedError("Vault Cash logic not pasted yet")
+# Vault Cash logic completed
 
 def run_pending_collection_entry(excel_path):
     import pandas as pd
@@ -1792,7 +1792,6 @@ def run_cms_recon_streamlit(format_file: str, statements_folder: str, cms_ledger
 # ============================================================
 # PAGE UI
 # ============================================================
-st.set_page_config(page_title="Collection Efficiency Automation", page_icon="📊", layout="wide")
 load_global_css()
 st.title("📊 Reporting Team- Reports Automisation")
 
