@@ -1815,7 +1815,42 @@ selected_report = st.selectbox(
     index=0,
     key="report_selector"
 )
+if selected_report == "1) Collection Efficiency Report":
+    temp_ce_for_hubs = st.file_uploader(
+        "Select Collection Efficiency file for hub list",
+        type=["xlsx"],
+        key="ce_hub_selector_helper",
+        label_visibility="collapsed"
+    )
 
+    if temp_ce_for_hubs is not None:
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                helper_ce_path = os.path.join(tmpdir, "helper_ce.xlsx")
+                save_uploaded_file(temp_ce_for_hubs, helper_ce_path)
+
+                helper_sheet_names = get_ce_sheet_names(helper_ce_path)
+                helper_hubs = []
+
+                for sh in helper_sheet_names:
+                    helper_df = read_ce_sheet(helper_ce_path, sh)
+                    helper_df.columns = helper_df.columns.astype(str).str.strip()
+                    if "Hub" in helper_df.columns:
+                        helper_hubs = helper_df["Hub"].dropna().astype(str).str.strip().unique().tolist()
+                        del helper_df
+                        gc.collect()
+                        break
+                    del helper_df
+                    gc.collect()
+
+                if helper_hubs:
+                    st.session_state["selected_single_hub_runtime"] = st.selectbox(
+                        "Select Hub (used only if Processing Mode = Single Hub)",
+                        helper_hubs,
+                        key="single_hub_picker"
+                    )
+        except Exception:
+            pass
 
 # ============================================================
 # HELPERS
@@ -2500,9 +2535,18 @@ if selected_report == "1) Collection Efficiency Report":
         value=True,
         key="csvmode"
     )
+
+    process_mode = st.radio(
+        "Processing Mode",
+        ["All Hubs", "Single Hub"],
+        horizontal=True,
+        key="ce_process_mode"
+    )
+
     st.caption("Tip: If Arrear CSV is >200MB, ZIP it and upload the .zip (usually <200MB).")
 
     all_uploaded = all([ce_file, jlg_file, il_file, arrear_file])
+
     run_btn = st.button(
         "🚀 Run Automation",
         disabled=not all_uploaded,
@@ -2524,21 +2568,35 @@ if selected_report == "1) Collection Efficiency Report":
                 arrear_ext = os.path.splitext(arrear_file.name)[1].lower()
                 arrear_path = os.path.join(workdir, f"Arrear{arrear_ext}")
 
+                runtime_log_path = os.path.join(workdir, "runtime_debug_log.txt")
+
+                def append_runtime_log(msg):
+                    with open(runtime_log_path, "a", encoding="utf-8") as f:
+                        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | {msg}\n")
+
+                append_runtime_log("Run started")
+
                 status.write("Saving uploaded files...")
                 save_uploaded_file(ce_file, ce_path)
                 save_uploaded_file(jlg_file, jlg_path)
                 save_uploaded_file(il_file, il_path)
                 save_uploaded_file(arrear_file, arrear_path)
+                append_runtime_log("Uploaded files saved")
+
                 status.write("Checkpoint 1: uploaded files saved")
                 progress.progress(10)
                 timer_box.write(f"Elapsed: {time.time() - t0:.1f}s")
 
                 status.write("Creating DVC consolidated file...")
                 consolidated_df = build_dvc_consolidate(jlg_path, il_path)
+                append_runtime_log(f"DVC consolidated built | rows={len(consolidated_df)}")
+
                 status.write(f"Checkpoint 2: DVC consolidated built | rows={len(consolidated_df)}")
 
                 status.write("Creating Arrear_Advance sheet (cust_id pivot)...")
                 arrear_adv_df = build_arrear_advance_sheet(consolidated_df)
+                append_runtime_log(f"Arrear_Advance built | rows={len(arrear_adv_df)}")
+
                 status.write(f"Checkpoint 3: Arrear_Advance built | rows={len(arrear_adv_df)}")
 
                 dvc_output_path = os.path.join(workdir, "DVC.xlsx")
@@ -2546,6 +2604,7 @@ if selected_report == "1) Collection Efficiency Report":
                     consolidated_df.to_excel(writer, sheet_name="DVC_consolidate", index=False)
                     arrear_adv_df.to_excel(writer, sheet_name="Arrear_Advance", index=False)
 
+                append_runtime_log("Master DVC.xlsx saved")
                 status.write("Checkpoint 4: master DVC.xlsx saved")
                 progress.progress(35)
                 timer_box.write(f"Elapsed after DVC write: {time.time() - t0:.1f}s")
@@ -2558,7 +2617,7 @@ if selected_report == "1) Collection Efficiency Report":
                     d = read_ce_sheet(ce_path, sh_name)
                     d.columns = d.columns.astype(str).str.strip()
                     if "Hub" in d.columns:
-                        hub_list = d["Hub"].dropna().unique()
+                        hub_list = d["Hub"].dropna().astype(str).str.strip().unique().tolist()
                         del d
                         gc.collect()
                         break
@@ -2568,12 +2627,23 @@ if selected_report == "1) Collection Efficiency Report":
                 if hub_list is None or len(hub_list) == 0:
                     raise ValueError("No Hub values found in Collection Efficiency.xlsx (column 'Hub').")
 
+                append_runtime_log(f"Hub list prepared | hubs={hub_list}")
                 status.write("Checkpoint 5: hub list prepared")
                 progress.progress(45)
+
+                if process_mode == "Single Hub":
+                    selected_single_hub = st.session_state.get("selected_single_hub_runtime")
+                    if not selected_single_hub or selected_single_hub not in hub_list:
+                        selected_single_hub = hub_list[0]
+                    hub_iterable = [selected_single_hub]
+                else:
+                    hub_iterable = hub_list
 
                 status.write("Preparing Arrear data...")
                 arr_df = read_arrear_any(arrear_path, arrear_file.name, use_csv_mode)
                 arr_df.columns = arr_df.columns.astype(str).str.strip()
+                append_runtime_log(f"Arrear loaded | rows={len(arr_df)} | cols={len(arr_df.columns)}")
+
                 status.write(f"Checkpoint 6: arrear loaded | rows={len(arr_df)} | cols={len(arr_df.columns)}")
 
                 zone_col = None
@@ -2592,10 +2662,11 @@ if selected_report == "1) Collection Efficiency Report":
                 hubwise_root = os.path.join(workdir, "Hub wise")
                 os.makedirs(hubwise_root, exist_ok=True)
 
-                total_hubs = len(hub_list)
+                total_hubs = len(hub_iterable)
                 dvc_hub_col = "hub" if "hub" in consolidated_df.columns else ("Hub" if "Hub" in consolidated_df.columns else None)
 
-                for i, hub in enumerate(hub_list, start=1):
+                for i, hub in enumerate(hub_iterable, start=1):
+                    append_runtime_log(f"Starting hub {i}/{total_hubs} | hub={hub}")
                     status.write(f"Checkpoint 7: starting hub {i}/{total_hubs} | hub={hub}")
 
                     hub_folder = os.path.join(hubwise_root, clean_name_for_folder(hub))
@@ -2640,6 +2711,7 @@ if selected_report == "1) Collection Efficiency Report":
                         ws_info["A1"].font = Font(bold=True)
 
                     wb_ce.save(os.path.join(hub_folder, "Collection Efficiency.xlsx"))
+                    append_runtime_log(f"CE workbook saved | hub={hub}")
                     status.write(f"Checkpoint 8: CE workbook saved | hub={hub}")
                     del wb_ce
                     gc.collect()
@@ -2678,8 +2750,10 @@ if selected_report == "1) Collection Efficiency Report":
                             ws2.freeze_panes = "A2"
                             ws2.auto_filter.ref = ws2.dimensions
                             del hub_adv
+                            gc.collect()
 
                     wb_dvc.save(os.path.join(hub_folder, "DVC.xlsx"))
+                    append_runtime_log(f"DVC workbook saved | hub={hub}")
                     status.write(f"Checkpoint 9: DVC workbook saved | hub={hub}")
 
                     if "dvc_hub_df" in locals():
@@ -2704,14 +2778,17 @@ if selected_report == "1) Collection Efficiency Report":
                             encoding="utf-8-sig"
                         )
 
+                    append_runtime_log(f"Arrear CSV saved | hub={hub} | rows={len(ar_hub_df)}")
                     del ar_hub_df
                     gc.collect()
 
                     progress.progress(55 + int(40 * (i / max(total_hubs, 1))))
 
+                append_runtime_log("Starting ZIP creation")
                 status.write("Checkpoint 11: starting ZIP creation")
                 zip_path = os.path.join(workdir, "Hub_Wise_Output.zip")
                 zip_folder(hubwise_root, zip_path)
+                append_runtime_log("ZIP created successfully")
                 status.write("Checkpoint 12: ZIP created successfully")
                 progress.progress(98)
 
@@ -2721,12 +2798,15 @@ if selected_report == "1) Collection Efficiency Report":
                 with open(zip_path, "rb") as f:
                     zip_bytes = f.read()
 
+                with open(runtime_log_path, "rb") as f:
+                    log_bytes = f.read()
+
             progress.progress(100)
             status.empty()
             timer_box.empty()
             st.success("✅ Done. Download outputs below.")
 
-            d1, d2 = st.columns(2)
+            d1, d2, d3 = st.columns(3)
 
             with d1:
                 st.download_button(
@@ -2743,6 +2823,15 @@ if selected_report == "1) Collection Efficiency Report":
                     data=zip_bytes,
                     file_name="Hub_Wise_Output.zip",
                     mime="application/zip",
+                    use_container_width=True
+                )
+
+            with d3:
+                st.download_button(
+                    "⬇️ Download Runtime Debug Log",
+                    data=log_bytes,
+                    file_name="runtime_debug_log.txt",
+                    mime="text/plain",
                     use_container_width=True
                 )
 
