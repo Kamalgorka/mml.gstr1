@@ -2529,7 +2529,7 @@ if selected_report == "1) Collection Efficiency Report":
 
                 status.write("Reading Collection Efficiency...")
                 ce_sheets = read_ce_sheets(ce_path)
-                status.write(f"Checkpoint 5: hub list prepared | hubs={len(hub_list)} | values={hub_list}")
+                status.write("Checkpoint 5: hub list prepared")
 
                 hub_list = None
                 for _, d in ce_sheets.items():
