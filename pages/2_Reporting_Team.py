@@ -7,6 +7,7 @@
 # - LPC detail sheet is written by pandas (fast, low memory) + Summary formatted by openpyxl.
 
 import os
+import gc
 import re
 import zipfile
 import tempfile
@@ -1929,8 +1930,13 @@ def write_df_fast(ws, df: pd.DataFrame, format_map: dict):
                 c.number_format = fmt
 
 
-def read_ce_sheets(path: str) -> dict:
-    return pd.read_excel(path, sheet_name=None, engine="openpyxl")
+def get_ce_sheet_names(path: str) -> list:
+    xl = pd.ExcelFile(path, engine="openpyxl")
+    return xl.sheet_names
+
+
+def read_ce_sheet(path: str, sheet_name: str) -> pd.DataFrame:
+    return pd.read_excel(path, sheet_name=sheet_name, engine="openpyxl")
 
 
 def read_csv_with_fallback(path, compression=None):
@@ -2527,17 +2533,21 @@ if selected_report == "1) Collection Efficiency Report":
                 progress.progress(35)
                 timer_box.write(f"Elapsed after DVC write: {time.time()-t0:.1f}s")
 
-                status.write("Reading Collection Efficiency...")
-                ce_sheets = read_ce_sheets(ce_path)
-                status.write("Checkpoint 5: hub list prepared")
+status.write("Reading Collection Efficiency...")
+ce_sheet_names = get_ce_sheet_names(ce_path)
 
-                hub_list = None
-                for _, d in ce_sheets.items():
-                    if "Hub" in d.columns:
-                        hub_list = d["Hub"].dropna().unique()
-                        break
-                if hub_list is None or len(hub_list) == 0:
-                    raise ValueError("No Hub values found in Collection Efficiency.xlsx (column 'Hub').")
+hub_list = None
+for sh_name in ce_sheet_names:
+    d = read_ce_sheet(ce_path, sh_name)
+    d.columns = d.columns.astype(str).str.strip()
+    if "Hub" in d.columns:
+        hub_list = d["Hub"].dropna().unique()
+        break
+
+if hub_list is None or len(hub_list) == 0:
+    raise ValueError("No Hub values found in Collection Efficiency.xlsx (column 'Hub').")
+
+status.write("Checkpoint 5: hub list prepared")
 
                 progress.progress(45)
 
@@ -2573,21 +2583,23 @@ if selected_report == "1) Collection Efficiency Report":
                     wb_ce.remove(wb_ce.active)
                     ce_written = 0
 
-                    for sh_name, df_sh in ce_sheets.items():
-                        if "Hub" not in df_sh.columns:
-                            continue
+                    for sh_name in ce_sheet_names:
+    df_sh = read_ce_sheet(ce_path, sh_name)
+    df_sh.columns = df_sh.columns.astype(str).str.strip()
 
-                        filtered = df_sh[df_sh["Hub"] == hub].copy()
-                        if filtered.empty:
-                            continue
+    if "Hub" not in df_sh.columns:
+        continue
 
-                        filtered = recompute_grand_total(filtered, hub_col="Hub")
+    filtered = df_sh[df_sh["Hub"].astype(str).str.strip() == str(hub).strip()].copy()
+    if filtered.empty:
+        continue
 
-                        ws_ = wb_ce.create_sheet(title=safe_sheet_title(sh_name))
-                        fmt_map = build_format_map(filtered, hub_col="Hub")
-                        write_df_fast(ws_, filtered, fmt_map)
-                        ce_written += 1
+    filtered = recompute_grand_total(filtered, hub_col="Hub")
 
+    ws_ = wb_ce.create_sheet(title=safe_sheet_title(sh_name))
+    fmt_map = build_format_map(filtered, hub_col="Hub")
+    write_df_fast(ws_, filtered, fmt_map)
+    ce_written += 1
                     if ce_written == 0:
                         ws_ = wb_ce.create_sheet(title="Info")
                         ws_["A1"] = f"No Collection Efficiency data for HUB = {hub}"
@@ -2595,6 +2607,8 @@ if selected_report == "1) Collection Efficiency Report":
 
                     wb_ce.save(os.path.join(hub_folder, "Collection Efficiency.xlsx"))
                     status.write(f"Checkpoint 8: CE workbook saved | hub={hub}")
+                    del wb_ce
+                    gc.collect() 
 
                     wb_dvc = Workbook()
                     wb_dvc.remove(wb_dvc.active)
@@ -2603,10 +2617,10 @@ if selected_report == "1) Collection Efficiency Report":
                         ws_info = wb_dvc.create_sheet("Info")
                         ws_info["A1"] = "DVC output does not have hub column."
                         ws_info["A1"].font = Font(bold=True)
-                    else:
-                        dvc_hub_df = consolidated_df[
-                            consolidated_df[dvc_hub_col].astype(str).str.strip() == str(hub).strip()
-                        ].copy()
+                    wb_dvc.save(os.path.join(hub_folder, "DVC.xlsx"))
+                    status.write(f"Checkpoint 9: DVC workbook saved | hub={hub}")
+                    del dvc_hub_df
+                    gc.collect()
 
                         ws1 = wb_dvc.create_sheet("DVC_consolidate")
                         if dvc_hub_df.empty:
@@ -2628,9 +2642,12 @@ if selected_report == "1) Collection Efficiency Report":
                                 cell.font = Font(bold=True)
                             ws2.freeze_panes = "A2"
                             ws2.auto_filter.ref = ws2.dimensions
+                            del hub_adv
 
                     wb_dvc.save(os.path.join(hub_folder, "DVC.xlsx"))
                     status.write(f"Checkpoint 9: DVC workbook saved | hub={hub}")
+                    del wb_dvc
+                    gc.collect()
 
                     ar_hub_df = arr_df[arr_df[zone_col].astype(str).str.strip() == str(hub).strip()].copy()
                     arrear_out_csv = os.path.join(hub_folder, "Arrear JLG & IL.csv")
@@ -2639,6 +2656,8 @@ if selected_report == "1) Collection Efficiency Report":
                         pd.DataFrame(columns=arr_df.columns).to_csv(arrear_out_csv, index=False, encoding="utf-8-sig")
                     else:
                         ar_hub_df.to_csv(arrear_out_csv, index=False, encoding="utf-8-sig")
+                        del ar_hub_df
+                        gc.collect()
 
                     progress.progress(55 + int(40 * (i / max(total_hubs, 1))))
 
