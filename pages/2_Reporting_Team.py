@@ -1792,6 +1792,7 @@ def run_cms_recon_streamlit(format_file: str, statements_folder: str, cms_ledger
 # ============================================================
 # PAGE UI
 # ============================================================
+st.set_page_config(page_title="Collection Efficiency Automation", page_icon="📊", layout="wide")
 load_global_css()
 st.title("📊 Reporting Team- Reports Automisation")
 
@@ -1815,43 +1816,6 @@ selected_report = st.selectbox(
     index=0,
     key="report_selector"
 )
-if selected_report == "1) Collection Efficiency Report":
-    temp_ce_for_hubs = st.file_uploader(
-        "Select Collection Efficiency file for hub list",
-        type=["xlsx"],
-        key="ce_hub_selector_helper",
-        label_visibility="collapsed"
-    )
-
-    if temp_ce_for_hubs is not None:
-        try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                helper_ce_path = os.path.join(tmpdir, "helper_ce.xlsx")
-                save_uploaded_file(temp_ce_for_hubs, helper_ce_path)
-
-                helper_sheet_names = get_ce_sheet_names(helper_ce_path)
-                helper_hubs = []
-
-                for sh in helper_sheet_names:
-                    helper_df = read_ce_sheet(helper_ce_path, sh)
-                    helper_df.columns = helper_df.columns.astype(str).str.strip()
-                    if "Hub" in helper_df.columns:
-                        helper_hubs = helper_df["Hub"].dropna().astype(str).str.strip().unique().tolist()
-                        del helper_df
-                        gc.collect()
-                        break
-                    del helper_df
-                    gc.collect()
-
-                if helper_hubs:
-                    st.session_state["selected_single_hub_runtime"] = st.selectbox(
-                        "Select Hub (used only if Processing Mode = Single Hub)",
-                        helper_hubs,
-                        key="single_hub_picker"
-                    )
-        except Exception:
-            pass
-
 # ============================================================
 # HELPERS
 # ============================================================
@@ -2625,7 +2589,18 @@ if selected_report == "1) Collection Efficiency Report":
                 progress.progress(45)
 
                 hub_iterable = hub_list
+                status.write("Caching Collection Efficiency sheets...")
+                ce_data = {}
 
+               for sh_name in ce_sheet_names:
+                   df_tmp = read_ce_sheet(ce_path, sh_name)
+                   df_tmp.columns = df_tmp.columns.astype(str).str.strip()
+                   if "Hub" in df_tmp.columns:
+                       ce_data[sh_name] = df_tmp
+                   else:
+                       del df_tmp
+                gc.collect()
+                append_runtime_log(f"CE sheets cached | usable_sheets={list(ce_data.keys())}")
                 status.write("Preparing Arrear data...")
                 arr_df = read_arrear_any(arrear_path, arrear_file.name, use_csv_mode)
                 arr_df.columns = arr_df.columns.astype(str).str.strip()
@@ -2664,18 +2639,8 @@ if selected_report == "1) Collection Efficiency Report":
                     wb_ce.remove(wb_ce.active)
                     ce_written = 0
 
-                    for sh_name in ce_sheet_names:
-                        df_sh = read_ce_sheet(ce_path, sh_name)
-                        df_sh.columns = df_sh.columns.astype(str).str.strip()
-
-                        if "Hub" not in df_sh.columns:
-                            del df_sh
-                            gc.collect()
-                            continue
-
-                        filtered = df_sh[df_sh["Hub"].astype(str).str.strip() == str(hub).strip()].copy()
-                        del df_sh
-                        gc.collect()
+               for sh_name, df_sh in ce_data.items():
+                    filtered = df_sh[df_sh["Hub"].astype(str).str.strip() == str(hub).strip()].copy()
 
                         if filtered.empty:
                             del filtered
