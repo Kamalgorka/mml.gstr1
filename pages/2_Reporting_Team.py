@@ -2640,7 +2640,9 @@ if selected_report == "1) Collection Efficiency Report":
                     ce_written = 0
 
                     for sh_name, df_sh in ce_data.items():
+                        append_runtime_log(f"Processing CE sheet | hub={hub} | sheet={sh_name}")
                         filtered = df_sh[df_sh["Hub"].astype(str).str.strip() == str(hub).strip()].copy()
+                        append_runtime_log(f"Filtered CE rows | hub={hub} | sheet={sh_name} | rows={len(filtered)}")
 
                         if filtered.empty:
                             del filtered
@@ -2648,6 +2650,7 @@ if selected_report == "1) Collection Efficiency Report":
                             continue
 
                         filtered = recompute_grand_total(filtered, hub_col="Hub")
+                        append_runtime_log(f"Writing CE sheet | hub={hub} | sheet={sh_name}")
 
                         ws_ce = wb_ce.create_sheet(title=safe_sheet_title(sh_name))
                         fmt_map = build_format_map(filtered, hub_col="Hub")
