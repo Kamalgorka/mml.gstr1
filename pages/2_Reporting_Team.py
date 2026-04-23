@@ -2639,8 +2639,8 @@ if selected_report == "1) Collection Efficiency Report":
                     wb_ce.remove(wb_ce.active)
                     ce_written = 0
 
-               for sh_name, df_sh in ce_data.items():
-                    filtered = df_sh[df_sh["Hub"].astype(str).str.strip() == str(hub).strip()].copy()
+                    for sh_name, df_sh in ce_data.items():
+                        filtered = df_sh[df_sh["Hub"].astype(str).str.strip() == str(hub).strip()].copy()
 
                         if filtered.empty:
                             del filtered
