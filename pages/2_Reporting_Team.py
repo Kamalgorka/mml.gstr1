@@ -2536,13 +2536,6 @@ if selected_report == "1) Collection Efficiency Report":
         key="csvmode"
     )
 
-    process_mode = st.radio(
-        "Processing Mode",
-        ["All Hubs", "Single Hub"],
-        horizontal=True,
-        key="ce_process_mode"
-    )
-
     st.caption("Tip: If Arrear CSV is >200MB, ZIP it and upload the .zip (usually <200MB).")
 
     all_uploaded = all([ce_file, jlg_file, il_file, arrear_file])
@@ -2631,13 +2624,7 @@ if selected_report == "1) Collection Efficiency Report":
                 status.write("Checkpoint 5: hub list prepared")
                 progress.progress(45)
 
-                if process_mode == "Single Hub":
-                    selected_single_hub = st.session_state.get("selected_single_hub_runtime")
-                    if not selected_single_hub or selected_single_hub not in hub_list:
-                        selected_single_hub = hub_list[0]
-                    hub_iterable = [selected_single_hub]
-                else:
-                    hub_iterable = hub_list
+                hub_iterable = hub_list
 
                 status.write("Preparing Arrear data...")
                 arr_df = read_arrear_any(arrear_path, arrear_file.name, use_csv_mode)
