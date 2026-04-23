@@ -2592,13 +2592,13 @@ if selected_report == "1) Collection Efficiency Report":
                 status.write("Caching Collection Efficiency sheets...")
                 ce_data = {}
 
-               for sh_name in ce_sheet_names:
-                   df_tmp = read_ce_sheet(ce_path, sh_name)
-                   df_tmp.columns = df_tmp.columns.astype(str).str.strip()
-                   if "Hub" in df_tmp.columns:
-                       ce_data[sh_name] = df_tmp
-                   else:
-                       del df_tmp
+                for sh_name in ce_sheet_names:
+                    df_tmp = read_ce_sheet(ce_path, sh_name)
+                    df_tmp.columns = df_tmp.columns.astype(str).str.strip()
+                    if "Hub" in df_tmp.columns:
+                        ce_data[sh_name] = df_tmp
+                    else:
+                        del df_tmp
                 gc.collect()
                 append_runtime_log(f"CE sheets cached | usable_sheets={list(ce_data.keys())}")
                 status.write("Preparing Arrear data...")
