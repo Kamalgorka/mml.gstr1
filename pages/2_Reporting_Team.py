@@ -28,8 +28,8 @@ from openpyxl.utils import get_column_letter
 
 from ui import load_global_css
 
+st.set_page_config(page_title="Collection Efficiency Automation", page_icon="📊", layout="wide")
 load_global_css()
-
 # ----------------------------
 # Vault Cash Logic (Single-file version)
 # ----------------------------
@@ -2530,25 +2530,29 @@ if selected_report == "1) Collection Efficiency Report":
                     consolidated_df.to_excel(writer, sheet_name="DVC_consolidate", index=False)
                     arrear_adv_df.to_excel(writer, sheet_name="Arrear_Advance", index=False)
 
+                status.write("Checkpoint 4: master DVC.xlsx saved")
                 progress.progress(35)
                 timer_box.write(f"Elapsed after DVC write: {time.time()-t0:.1f}s")
 
-status.write("Reading Collection Efficiency...")
-ce_sheet_names = get_ce_sheet_names(ce_path)
+                status.write("Reading Collection Efficiency...")
+                ce_sheet_names = get_ce_sheet_names(ce_path)
 
-hub_list = None
-for sh_name in ce_sheet_names:
-    d = read_ce_sheet(ce_path, sh_name)
-    d.columns = d.columns.astype(str).str.strip()
-    if "Hub" in d.columns:
-        hub_list = d["Hub"].dropna().unique()
-        break
+                hub_list = None
+                for sh_name in ce_sheet_names:
+                    d = read_ce_sheet(ce_path, sh_name)
+                    d.columns = d.columns.astype(str).str.strip()
+                    if "Hub" in d.columns:
+                        hub_list = d["Hub"].dropna().unique()
+                        del d
+                        gc.collect()
+                        break
+                    del d
+                    gc.collect()
 
-if hub_list is None or len(hub_list) == 0:
-    raise ValueError("No Hub values found in Collection Efficiency.xlsx (column 'Hub').")
+                if hub_list is None or len(hub_list) == 0:
+                    raise ValueError("No Hub values found in Collection Efficiency.xlsx (column 'Hub').")
 
-status.write("Checkpoint 5: hub list prepared")
-
+                status.write("Checkpoint 5: hub list prepared")
                 progress.progress(45)
 
                 status.write("Preparing Arrear data...")
@@ -2579,27 +2583,39 @@ status.write("Checkpoint 5: hub list prepared")
                     hub_folder = os.path.join(hubwise_root, clean_name_for_folder(hub))
                     os.makedirs(hub_folder, exist_ok=True)
 
+                    # ---------------- CE workbook ----------------
                     wb_ce = Workbook()
                     wb_ce.remove(wb_ce.active)
                     ce_written = 0
 
                     for sh_name in ce_sheet_names:
-    df_sh = read_ce_sheet(ce_path, sh_name)
-    df_sh.columns = df_sh.columns.astype(str).str.strip()
+                        df_sh = read_ce_sheet(ce_path, sh_name)
+                        df_sh.columns = df_sh.columns.astype(str).str.strip()
 
-    if "Hub" not in df_sh.columns:
-        continue
+                        if "Hub" not in df_sh.columns:
+                            del df_sh
+                            gc.collect()
+                            continue
 
-    filtered = df_sh[df_sh["Hub"].astype(str).str.strip() == str(hub).strip()].copy()
-    if filtered.empty:
-        continue
+                        filtered = df_sh[df_sh["Hub"].astype(str).str.strip() == str(hub).strip()].copy()
+                        del df_sh
+                        gc.collect()
 
-    filtered = recompute_grand_total(filtered, hub_col="Hub")
+                        if filtered.empty:
+                            del filtered
+                            gc.collect()
+                            continue
 
-    ws_ = wb_ce.create_sheet(title=safe_sheet_title(sh_name))
-    fmt_map = build_format_map(filtered, hub_col="Hub")
-    write_df_fast(ws_, filtered, fmt_map)
-    ce_written += 1
+                        filtered = recompute_grand_total(filtered, hub_col="Hub")
+
+                        ws_ = wb_ce.create_sheet(title=safe_sheet_title(sh_name))
+                        fmt_map = build_format_map(filtered, hub_col="Hub")
+                        write_df_fast(ws_, filtered, fmt_map)
+                        ce_written += 1
+
+                        del filtered
+                        gc.collect()
+
                     if ce_written == 0:
                         ws_ = wb_ce.create_sheet(title="Info")
                         ws_["A1"] = f"No Collection Efficiency data for HUB = {hub}"
@@ -2608,8 +2624,9 @@ status.write("Checkpoint 5: hub list prepared")
                     wb_ce.save(os.path.join(hub_folder, "Collection Efficiency.xlsx"))
                     status.write(f"Checkpoint 8: CE workbook saved | hub={hub}")
                     del wb_ce
-                    gc.collect() 
+                    gc.collect()
 
+                    # ---------------- DVC workbook ----------------
                     wb_dvc = Workbook()
                     wb_dvc.remove(wb_dvc.active)
 
@@ -2617,10 +2634,10 @@ status.write("Checkpoint 5: hub list prepared")
                         ws_info = wb_dvc.create_sheet("Info")
                         ws_info["A1"] = "DVC output does not have hub column."
                         ws_info["A1"].font = Font(bold=True)
-                    wb_dvc.save(os.path.join(hub_folder, "DVC.xlsx"))
-                    status.write(f"Checkpoint 9: DVC workbook saved | hub={hub}")
-                    del dvc_hub_df
-                    gc.collect()
+                    else:
+                        dvc_hub_df = consolidated_df[
+                            consolidated_df[dvc_hub_col].astype(str).str.strip() == str(hub).strip()
+                        ].copy()
 
                         ws1 = wb_dvc.create_sheet("DVC_consolidate")
                         if dvc_hub_df.empty:
@@ -2646,24 +2663,33 @@ status.write("Checkpoint 5: hub list prepared")
 
                     wb_dvc.save(os.path.join(hub_folder, "DVC.xlsx"))
                     status.write(f"Checkpoint 9: DVC workbook saved | hub={hub}")
+                    if 'dvc_hub_df' in locals():
+                        del dvc_hub_df
                     del wb_dvc
                     gc.collect()
 
+                    # ---------------- Arrear CSV ----------------
                     ar_hub_df = arr_df[arr_df[zone_col].astype(str).str.strip() == str(hub).strip()].copy()
                     arrear_out_csv = os.path.join(hub_folder, "Arrear JLG & IL.csv")
 
                     if ar_hub_df.empty:
-                        pd.DataFrame(columns=arr_df.columns).to_csv(arrear_out_csv, index=False, encoding="utf-8-sig")
+                        pd.DataFrame(columns=arr_df.columns).to_csv(
+                            arrear_out_csv, index=False, encoding="utf-8-sig"
+                        )
                     else:
-                        ar_hub_df.to_csv(arrear_out_csv, index=False, encoding="utf-8-sig")
-                        del ar_hub_df
-                        gc.collect()
+                        ar_hub_df.to_csv(
+                            arrear_out_csv, index=False, encoding="utf-8-sig"
+                        )
+
+                    del ar_hub_df
+                    gc.collect()
 
                     progress.progress(55 + int(40 * (i / max(total_hubs, 1))))
 
-                status.write("Packaging ZIP...")
+                status.write("Checkpoint 11: starting ZIP creation")
                 zip_path = os.path.join(workdir, "Hub_Wise_Output.zip")
                 zip_folder(hubwise_root, zip_path)
+                status.write("Checkpoint 12: ZIP created successfully")
                 progress.progress(98)
 
                 with open(dvc_output_path, "rb") as f:
