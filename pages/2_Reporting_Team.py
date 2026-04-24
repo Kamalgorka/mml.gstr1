@@ -2503,6 +2503,11 @@ if selected_report == "1) Collection Efficiency Report":
     st.caption("Tip: If Arrear CSV is >200MB, ZIP it and upload the .zip (usually <200MB).")
 
     all_uploaded = all([ce_file, jlg_file, il_file, arrear_file])
+    selected_hub = st.text_input(
+        "Select Hub Optional - type exact hub name, or keep All",
+        value="All",
+        key="selected_hub_optional"
+    )
 
     run_btn = st.button(
         "🚀 Run Automation",
@@ -2588,7 +2593,10 @@ if selected_report == "1) Collection Efficiency Report":
                 status.write("Checkpoint 5: hub list prepared")
                 progress.progress(45)
 
-                hub_iterable = hub_list
+                if selected_hub.strip().lower() == "all":
+                    hub_iterable = hub_list
+                else:
+                    hub_iterable = [selected_hub.strip()]
                 status.write("Caching Collection Efficiency sheets...")
                 ce_data = {}
 
