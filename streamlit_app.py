@@ -15,6 +15,67 @@ if "logged_in" not in st.session_state:
 if "must_change_password" not in st.session_state:
     st.session_state.must_change_password = False
 
+
+# ---------------- LOGIN CSS ----------------
+def load_login_css():
+    st.markdown("""
+    <style>
+    /* Hide sidebar before login */
+    [data-testid="stSidebar"] {
+        display: none;
+    }
+
+    [data-testid="collapsedControl"] {
+        display: none;
+    }
+
+    .block-container {
+        max-width: 500px;
+        margin: auto;
+        padding-top: 80px;
+    }
+
+    .login-card {
+        background: white;
+        padding: 40px;
+        border-radius: 18px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+        border: 1px solid #e5e7eb;
+    }
+
+    .login-title {
+        text-align: center;
+        font-size: 30px;
+        font-weight: 800;
+        color: #1f4ed8;
+        margin-bottom: 5px;
+    }
+
+    .login-subtitle {
+        text-align: center;
+        color: #6b7280;
+        font-size: 14px;
+        margin-bottom: 25px;
+    }
+
+    div.stButton > button {
+        width: 100%;
+        background: #1f4ed8;
+        color: white;
+        border-radius: 10px;
+        height: 45px;
+        font-weight: 700;
+        border: none;
+    }
+
+    div.stButton > button:hover {
+        background: #173bb0;
+        color: white;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
 # ---------------- LOGIN FUNCTION ----------------
 def login_user(email, password):
     df = load_users()
@@ -39,6 +100,7 @@ def login_user(email, password):
 
     return True, "Login successful"
 
+
 # ---------------- PASSWORD CHANGE ----------------
 def change_password(new_pass):
     df = load_users()
@@ -52,16 +114,24 @@ def change_password(new_pass):
 
     log_activity("PASSWORD_CHANGE")
 
+
 # ---------------- LOGIN SCREEN ----------------
 if not st.session_state.logged_in:
 
-    st.title("🔐 Login - MML Smart Reports")
+    load_login_css()
 
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
+    st.markdown("""
+    <div class="login-card">
+        <div class="login-title">🔐 MML Smart Reports</div>
+        <div class="login-subtitle">Please sign in to continue</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    email = st.text_input("Email", placeholder="Enter your email")
+    password = st.text_input("Password", type="password", placeholder="Enter your password")
 
     if st.button("Login"):
-        success, msg = login_user(email, password)
+        success, msg = login_user(email.strip().lower(), password)
 
         if success:
             st.success("Login successful")
@@ -71,13 +141,21 @@ if not st.session_state.logged_in:
 
     st.stop()
 
+
 # ---------------- FORCE PASSWORD CHANGE ----------------
 if st.session_state.must_change_password:
 
-    st.title("⚠️ Change Password (Mandatory)")
+    load_login_css()
 
-    new_pass = st.text_input("New Password", type="password")
-    confirm_pass = st.text_input("Confirm Password", type="password")
+    st.markdown("""
+    <div class="login-card">
+        <div class="login-title">🔑 Change Password</div>
+        <div class="login-subtitle">Password change is mandatory</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    new_pass = st.text_input("New Password", type="password", placeholder="Enter new password")
+    confirm_pass = st.text_input("Confirm Password", type="password", placeholder="Re-enter password")
 
     if st.button("Update Password"):
 
@@ -93,6 +171,7 @@ if st.session_state.must_change_password:
             st.rerun()
 
     st.stop()
+
 
 # ---------------- MAIN APP ----------------
 st.title("📊 MML Smart Reports")
