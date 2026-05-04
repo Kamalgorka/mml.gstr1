@@ -84,7 +84,7 @@ if not os.path.exists(TEMPLATE_FILE):
     st.stop()
 
 
-def log_activity(action, month, filename):
+def log_ho_report_activity(action, month, filename):
     now = datetime.now()
 
     if not os.path.exists(LOG_FILE):
