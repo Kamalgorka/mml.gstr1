@@ -20,14 +20,8 @@ if "must_change_password" not in st.session_state:
 def load_login_css():
     st.markdown("""
     <style>
-    /* Hide sidebar before login */
-    [data-testid="stSidebar"] {
-        display: none;
-    }
-
-    [data-testid="collapsedControl"] {
-        display: none;
-    }
+    [data-testid="stSidebar"] { display: none; }
+    [data-testid="collapsedControl"] { display: none; }
 
     .block-container {
         max-width: 500px;
@@ -70,12 +64,13 @@ def load_login_css():
 
     div.stButton > button:hover {
         background: #173bb0;
-        color: white;
     }
     </style>
     """, unsafe_allow_html=True)
 
-def load_sidebar_css():
+
+# ---------------- HIDE DEFAULT STREAMLIT PAGES ----------------
+def hide_streamlit_pages():
     st.markdown("""
     <style>
     [data-testid="stSidebarNav"] {
@@ -83,6 +78,7 @@ def load_sidebar_css():
     }
     </style>
     """, unsafe_allow_html=True)
+
 
 # ---------------- LOGIN FUNCTION ----------------
 def login_user(email, password):
@@ -98,10 +94,9 @@ def login_user(email, password):
     if user_row["password"] != password:
         return False, "Wrong password"
 
-    # Set session
     st.session_state.logged_in = True
     st.session_state.user_email = email
-    st.session_state.user_role = user_row["role"]
+    st.session_state.user_role = user_row["role"].strip().upper()
     st.session_state.must_change_password = user_row["must_change_password"] == "YES"
 
     log_activity("LOGIN")
@@ -119,7 +114,6 @@ def change_password(new_pass):
     save_users(df)
 
     st.session_state.must_change_password = False
-
     log_activity("PASSWORD_CHANGE")
 
 
@@ -135,8 +129,8 @@ if not st.session_state.logged_in:
     </div>
     """, unsafe_allow_html=True)
 
-    email = st.text_input("Email", placeholder="Enter your email")
-    password = st.text_input("Password", type="password", placeholder="Enter your password")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
 
     if st.button("Login"):
         success, msg = login_user(email.strip().lower(), password)
@@ -162,8 +156,8 @@ if st.session_state.must_change_password:
     </div>
     """, unsafe_allow_html=True)
 
-    new_pass = st.text_input("New Password", type="password", placeholder="Enter new password")
-    confirm_pass = st.text_input("Confirm Password", type="password", placeholder="Re-enter password")
+    new_pass = st.text_input("New Password", type="password")
+    confirm_pass = st.text_input("Confirm Password", type="password")
 
     if st.button("Update Password"):
 
@@ -181,11 +175,21 @@ if st.session_state.must_change_password:
     st.stop()
 
 
-def load_sidebar_css():
-    st.markdown("""
-    <style>
-    [data-testid="stSidebarNav"] {
-        display: none;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# ---------------- MAIN APP ----------------
+
+hide_streamlit_pages()
+
+role = st.session_state.get("user_role", "")
+
+st.sidebar.title("📌 Menu")
+
+st.sidebar.page_link("streamlit_app.py", label="Home", icon="🏠")
+
+# IMPORTANT: FILE NAMES FROM YOUR SCREENSHOT
+if role in ["REPORTING", "ADMIN"]:
+    st.sidebar.page_link("pages/2_Reporting_Team.py", label="Reporting Team", icon="📊")
+
+if role in ["HO", "ADMIN"]:
+    st.sidebar.page_link("pages/1_HO_Team.py", label="HO Team", icon="🏢")
+
+st.title("Welcome to MML Smart Reports")
