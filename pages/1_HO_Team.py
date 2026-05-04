@@ -40,7 +40,7 @@ def role_sidebar():
 role_sidebar()
 require_role(["HO", "ADMIN"])
 role_sidebar()
-log_activity("PAGE_OPEN", "HO Team")
+log_ho_report_activity("PAGE_OPEN", "HO Team")
 from datetime import datetime
 from openpyxl.styles import Font, Alignment
 from ui import load_global_css
@@ -985,7 +985,7 @@ if ho_report == "1) GSTR-1 State-wise Automation":
                 for file in os.listdir(OUTPUT_FOLDER):
                     zipf.write(os.path.join(OUTPUT_FOLDER, file), arcname=file)
 
-            log_activity(action="GSTR-1 Generated", month=MONTH, filename=f"GSTR1_{MONTH}.zip")
+            log_ho_report_activity(action="GSTR-1 Generated", month=MONTH, filename=f"GSTR1_{MONTH}.zip")
             t1 = time.time()
 
         zip_size_mb = os.path.getsize(zip_path) / (1024 * 1024)
@@ -1010,7 +1010,7 @@ if ho_report == "1) GSTR-1 State-wise Automation":
             with c2:
                 with open(file_path, "rb") as f:
                     if st.download_button("⬇ Download", data=f, file_name=file):
-                        log_activity(action="State File Downloaded", month=MONTH, filename=file)
+                        log_ho_report_activity(action="State File Downloaded", month=MONTH, filename=file)
 
         with open(zip_path, "rb") as z:
             st.download_button("⬇ Download GSTR1 ZIP", z, file_name=f"GSTR1_{MONTH}.zip")
