@@ -44,7 +44,6 @@ def role_sidebar():
         st.session_state.clear()
         st.switch_page("streamlit_app.py")
 
-role_sidebar()
 require_role(["REPORTING", "ADMIN"])
 role_sidebar()
 log_activity("PAGE_OPEN", "Reporting Team")
