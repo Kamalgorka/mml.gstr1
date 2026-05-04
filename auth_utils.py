@@ -46,12 +46,20 @@ def require_login():
 
 
 def require_role(allowed_roles):
-    require_login()
-    role = st.session_state.get("user_role", "")
+    import streamlit as st
 
-    if role not in allowed_roles:
-        log_activity("UNAUTHORIZED_ACCESS", status="BLOCKED")
-        st.error("You are not authorized to access this page.")
+    if "logged_in" not in st.session_state or not st.session_state.logged_in:
+        st.warning("🔐 Please login first")
+        st.switch_page("streamlit_app.py")
+        st.stop()
+
+    user_role = st.session_state.get("user_role", "").strip().upper()
+
+    allowed_roles = [r.strip().upper() for r in allowed_roles]
+
+    if user_role not in allowed_roles:
+        st.error("⛔ Access Denied")
+        st.switch_page("streamlit_app.py")
         st.stop()
 
 
