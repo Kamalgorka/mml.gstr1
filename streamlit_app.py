@@ -75,6 +75,14 @@ def load_login_css():
     </style>
     """, unsafe_allow_html=True)
 
+def load_sidebar_css():
+    st.markdown("""
+    <style>
+    [data-testid="stSidebarNav"] {
+        display: none;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ---------------- LOGIN FUNCTION ----------------
 def login_user(email, password):
@@ -173,14 +181,11 @@ if st.session_state.must_change_password:
     st.stop()
 
 
-# ---------------- MAIN APP ----------------
-st.title("📊 MML Smart Reports")
-st.write(f"Logged in as: {st.session_state.user_email} ({st.session_state.user_role})")
-
-st.sidebar.success("Select a team from sidebar")
-
-# Logout
-if st.sidebar.button("Logout"):
-    log_activity("LOGOUT")
-    st.session_state.clear()
-    st.rerun()
+def load_sidebar_css():
+    st.markdown("""
+    <style>
+    [data-testid="stSidebarNav"] {
+        display: none;
+    }
+    </style>
+    """, unsafe_allow_html=True)
