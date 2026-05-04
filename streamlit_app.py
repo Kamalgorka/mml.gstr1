@@ -185,11 +185,19 @@ st.sidebar.title("📌 Menu")
 
 st.sidebar.page_link("streamlit_app.py", label="Home", icon="🏠")
 
-# IMPORTANT: FILE NAMES FROM YOUR SCREENSHOT
+role = st.session_state.get("user_role", "")
+
 if role in ["REPORTING", "ADMIN"]:
     st.sidebar.page_link("pages/2_Reporting_Team.py", label="Reporting Team", icon="📊")
 
 if role in ["HO", "ADMIN"]:
     st.sidebar.page_link("pages/1_HO_Team.py", label="HO Team", icon="🏢")
 
+st.sidebar.markdown("---")
+
+if st.sidebar.button("🚪 Logout"):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+    
 st.title("Welcome to MML Smart Reports")
