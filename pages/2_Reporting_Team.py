@@ -29,6 +29,26 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def role_sidebar():
+    role = st.session_state.get("user_role", "").strip().upper()
+
+    st.sidebar.title("📌 Menu")
+    st.sidebar.page_link("streamlit_app.py", label="Home", icon="🏠")
+
+    if role in ["REPORTING", "ADMIN"]:
+        st.sidebar.page_link("pages/2_Reporting_Team.py", label="Reporting Team", icon="📊")
+
+    if role in ["HO", "ADMIN"]:
+        st.sidebar.page_link("pages/1_HO_Team.py", label="HO Team", icon="🏢")
+
+    st.sidebar.markdown("---")
+
+    if st.sidebar.button("🚪 Logout"):
+        st.session_state.clear()
+        st.switch_page("streamlit_app.py")
+
+role_sidebar()
+
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
