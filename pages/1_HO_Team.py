@@ -39,7 +39,7 @@ def role_sidebar():
 
 require_role(["HO", "ADMIN"])
 role_sidebar()
-log_ho_report_activity("PAGE_OPEN", "HO Team")
+log_activity("PAGE_OPEN", "HO Team")
 from datetime import datetime
 from openpyxl.styles import Font, Alignment
 from ui import load_global_css
