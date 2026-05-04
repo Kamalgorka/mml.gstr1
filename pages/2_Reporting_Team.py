@@ -21,6 +21,14 @@ from auth_utils import require_role, log_activity, run_with_logging
 require_role(["REPORTING", "ADMIN"])
 log_activity("PAGE_OPEN", "Reporting Team")
 
+st.markdown("""
+<style>
+[data-testid="stSidebarNav"] {
+    display: none;
+}
+</style>
+""", unsafe_allow_html=True)
+
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
