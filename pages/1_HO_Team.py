@@ -11,9 +11,6 @@ import time
 import streamlit as st
 from auth_utils import require_role, log_activity
 
-require_role(["HO", "ADMIN"])
-log_activity("PAGE_OPEN", "HO Team")
-
 st.markdown("""
 <style>
 [data-testid="stSidebarNav"] {
@@ -41,7 +38,9 @@ def role_sidebar():
         st.switch_page("streamlit_app.py")
 
 role_sidebar()
-
+require_role(["HO", "ADMIN"])
+role_sidebar()
+log_activity("PAGE_OPEN", "HO Team")
 from datetime import datetime
 from openpyxl.styles import Font, Alignment
 from ui import load_global_css
