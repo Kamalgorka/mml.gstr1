@@ -14,7 +14,12 @@ import tempfile
 import time
 import pandas as pd
 import numpy as np
+
 import streamlit as st
+from auth_utils import require_role, log_activity, run_with_logging
+
+require_role(["REPORTING", "ADMIN"])
+log_activity("PAGE_OPEN", "Reporting Team")
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
