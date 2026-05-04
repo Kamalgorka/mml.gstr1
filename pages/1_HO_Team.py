@@ -7,6 +7,21 @@ import warnings
 import re
 import shutil
 import time
+
+import streamlit as st
+from auth_utils import require_role, log_activity
+
+require_role(["HO", "ADMIN"])
+log_activity("PAGE_OPEN", "HO Team")
+
+st.markdown("""
+<style>
+[data-testid="stSidebarNav"] {
+    display: none;
+}
+</style>
+""", unsafe_allow_html=True)
+
 from datetime import datetime
 from openpyxl.styles import Font, Alignment
 from ui import load_global_css
