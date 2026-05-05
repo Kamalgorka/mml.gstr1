@@ -2543,6 +2543,7 @@ if selected_report == "1) Collection Efficiency Report":
     )
 
     if run_btn:
+        log_activity("RUN_REPORT", selected_report, "STARTED")
         try:
             progress = st.progress(0)
             status = st.empty()
@@ -2843,6 +2844,7 @@ if selected_report == "2) Arrear Advance Report":
     run2 = st.button("🚀 Generate Report", disabled=not (jlg2 and il2), use_container_width=True, key="run2")
 
     if run2:
+        log_activity("RUN_REPORT", selected_report, "STARTED")
         try:
             progress = st.progress(0)
             status = st.empty()
@@ -2902,6 +2904,7 @@ if selected_report == "3) LPC Report":
     run_lpc = st.button("🚀 Generate LPC Report", disabled=not bool(lpc_file), use_container_width=True, key="run_lpc")
 
     if run_lpc:
+        log_activity("RUN_REPORT", selected_report, "STARTED")
         try:
             progress = st.progress(0)
             status = st.empty()
@@ -2952,6 +2955,7 @@ if selected_report == "4) Vault Cash Report":
             f.write(uploaded.getbuffer())
 
         if st.button("Run Vault Cash Automation", key="run_vault"):
+            log_activity("RUN_REPORT", selected_report, "STARTED")
             try:
                 run_vault_cash_report(temp_path)
                 st.success("✅ Vault Cash Report generated successfully")
@@ -2987,6 +2991,7 @@ if selected_report == "5) Pending Collection Entry":
             f.write(uploaded.getbuffer())
 
         if st.button("Run Pending Collection Automation", key="run_pending_collection"):
+            log_activity("RUN_REPORT", selected_report, "STARTED")
             try:
                 run_pending_collection_entry(temp_path)
                 st.success("✅ Summary sheet created successfully")
@@ -3022,6 +3027,7 @@ if selected_report == "6) Demand Verification Report":
             f.write(uploaded.getbuffer())
 
         if st.button("Run Demand Verification", key="run_demand_verification"):
+            log_activity("RUN_REPORT", selected_report, "STARTED")
             try:
                 run_demand_verification(temp_path)
                 st.success("✅ Demand Verification generated successfully")
@@ -3059,6 +3065,7 @@ if selected_report == "7) MAP Ledger Difference":
             f.write(ledger_file.getbuffer())
 
         if st.button("Run MAP Ledger Difference", key="run_map_diff"):
+            log_activity("RUN_REPORT", selected_report, "STARTED")
             try:
                 run_map_ledger_difference(map_path, ledger_path)
                 st.success("✅ Difference sheet generated in MAP Ledger file!")
@@ -3099,6 +3106,7 @@ if selected_report == "8) Excess Amount":
 
         # ✅ Button is NOW inside the same report block (so it won't show in other reports)
         if st.button("Run Excess Amount Automation", key="run_excess_amt"):
+            log_activity("RUN_REPORT", selected_report, "STARTED")
             try:
                 out_file = run_excess_amount_from_streamlit(il_path, jlg_path, esc_path, temp_dir)
                 st.success("Generated successfully")
@@ -3145,6 +3153,7 @@ if selected_report == "9) CPP Payable":
             f.write(cpp_ledger.getbuffer())
 
         if st.button("Run CPP Difference Report", key="run_cpp_diff"):
+            log_activity("RUN_REPORT", selected_report, "STARTED")
             try:
                 run_cpp_payable_vs_cpp_ledger_difference(
                     cpp_payable_path,
@@ -3207,6 +3216,7 @@ if selected_report == "10) CMS and UPI Recon":
         output_path = os.path.join(temp_dir, "Consolidate CMS Recon.xlsx")
 
         if st.button("Run CMS Recon", key="run_cms_recon"):
+            log_activity("RUN_REPORT", selected_report, "STARTED")
             try:
                 run_cms_recon_streamlit(format_path, statements_folder, ledger_path, output_path)
 
