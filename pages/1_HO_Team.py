@@ -885,7 +885,8 @@ if ho_report == "1) GSTR-1 State-wise Automation":
         if uploaded_file is None:
             st.error("❌ Please upload GSTR1 format.xlsx")
             st.stop()
-
+        log_activity("RUN_REPORT", "HO - GSTR-1 State-wise Automation", "STARTED")
+        
         # Save upload to disk (keeping your existing approach)
         gstr1_path = os.path.join(UPLOAD_FOLDER, "GSTR1_format.xlsx")
         file_bytes = uploaded_file.getvalue()
@@ -1035,6 +1036,7 @@ elif ho_report == "2) HO DayBook Automation":
         if coa_file is None or zip_file is None:
             st.error("❌ Please upload both COA.xlsx and Statement.zip")
             st.stop()
+        log_activity("RUN_REPORT", "HO - HO DayBook Automation", "STARTED")    
 
         try:
             with st.spinner("⚙️ Processing DayBook..."):
