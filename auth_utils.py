@@ -1,6 +1,7 @@
 import os
 import csv
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
@@ -30,7 +31,7 @@ def log_activity(activity, report="", status="SUCCESS"):
             writer.writerow(["datetime", "email", "role", "activity", "report", "status"])
 
         writer.writerow([
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S")
             st.session_state.get("user_email", ""),
             st.session_state.get("user_role", ""),
             activity,
