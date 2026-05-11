@@ -4,6 +4,21 @@ import zipfile
 import pandas as pd
 
 
+WRITE_OFF_OUTPUT_COLUMNS = [
+    "ZONE",
+    "REGION",
+    "BRANCH_STATE",
+    "status",
+    "cust_id",
+    "member_name",
+    "mobile_number",
+    "od_days",
+    "total_arrear",
+    "outstanding_principal",
+    "outstanding_interest",
+]
+
+
 def clean_file_name(name):
     name = str(name).replace(".xlsx", "").replace(".xls", "")
     name = re.sub(r'[\\/:*?"<>|]', "", name)
@@ -22,12 +37,26 @@ def find_column(columns, required_col):
     return None
 
 
-def get_required_columns(uploaded_file, od_column_name, report_name):
-    header_df = pd.read_excel(uploaded_file, nrows=0)
-    columns = list(header_df.columns)
+def find_required_columns(columns, required_cols, report_name):
+    mapped_cols = []
 
-    status_col = find_column(columns, "status")
-    od_col = find_column(columns, od_column_name)
+    for required in required_cols:
+        actual = find_column(columns, required)
+        if actual is None:
+            raise ValueError(f"Column '{required}' not found in {report_name}")
+        mapped_cols.append(actual)
+
+    return mapped_cols
+
+
+def split_arrear_files(uploaded_file, report_name, od_column_name, output_dir, writeoff_only=False):
+    uploaded_file.seek(0)
+
+    header_df = pd.read_excel(uploaded_file, nrows=0)
+    all_columns = list(header_df.columns)
+
+    status_col = find_column(all_columns, "status")
+    od_col = find_column(all_columns, od_column_name)
 
     if status_col is None:
         raise ValueError(f"Status column not found in {report_name}")
@@ -36,23 +65,17 @@ def get_required_columns(uploaded_file, od_column_name, report_name):
         raise ValueError(f"{od_column_name} column not found in {report_name}")
 
     uploaded_file.seek(0)
-    return status_col, od_col
 
+    if writeoff_only:
+        usecols = find_required_columns(
+            all_columns,
+            WRITE_OFF_OUTPUT_COLUMNS,
+            report_name
+        )
+    else:
+        usecols = all_columns
 
-def split_arrear_files(uploaded_file, report_name, od_column_name, output_dir):
-    status_col, od_col = get_required_columns(
-        uploaded_file,
-        od_column_name,
-        report_name
-    )
-
-    uploaded_file.seek(0)
-
-    df = pd.read_excel(
-        uploaded_file,
-        usecols=[status_col, od_col]
-    )
-
+    df = pd.read_excel(uploaded_file, usecols=usecols)
     df.columns = [str(c).strip() for c in df.columns]
 
     status_col = find_column(df.columns, "status")
@@ -99,34 +122,42 @@ def process_sms_report(files, output_dir):
         "Monthly Outstanding SMS Data JLG HUB 1": {
             "file": files["Monthly Outstanding SMS Data JLG HUB 1"],
             "od_col": "max_od_days",
+            "writeoff_only": False,
         },
         "Monthly Outstanding SMS Data JLG HUB 2": {
             "file": files["Monthly Outstanding SMS Data JLG HUB 2"],
             "od_col": "max_od_days",
+            "writeoff_only": False,
         },
         "Monthly Outstanding SMS Data JLG HUB 3": {
             "file": files["Monthly Outstanding SMS Data JLG HUB 3"],
             "od_col": "max_od_days",
+            "writeoff_only": False,
         },
         "Monthly Outstanding SMS Data JLG HUB 4": {
             "file": files["Monthly Outstanding SMS Data JLG HUB 4"],
             "od_col": "max_od_days",
+            "writeoff_only": False,
         },
         "Monthly Outstanding SMS Data JLG HUB 5 and 6": {
             "file": files["Monthly Outstanding SMS Data JLG HUB 5 and 6"],
             "od_col": "max_od_days",
+            "writeoff_only": False,
         },
         "Monthly Outstanding SMS Data IL": {
             "file": files["Monthly Outstanding SMS Data IL"],
             "od_col": "max_od_days",
+            "writeoff_only": False,
         },
         "Loan OS Write Off": {
             "file": files["Loan OS Write Off"],
             "od_col": "od_days",
+            "writeoff_only": True,
         },
         "Loan OS Write Off IL": {
             "file": files["Loan OS Write Off IL"],
             "od_col": "od_days",
+            "writeoff_only": True,
         },
     }
 
@@ -138,6 +169,7 @@ def process_sms_report(files, output_dir):
             report_name=report_name,
             od_column_name=cfg["od_col"],
             output_dir=output_dir,
+            writeoff_only=cfg["writeoff_only"],
         )
         summary.append(result)
 
