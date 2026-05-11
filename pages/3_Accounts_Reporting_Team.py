@@ -163,12 +163,12 @@ elif selected_report == "1) SMS Report":
     if run_btn:
 
         required_files = {
-            "JLG HUB 1": hub1_file,
-            "JLG HUB 2": hub2_file,
-            "JLG HUB 3": hub3_file,
-            "JLG HUB 4": hub4_file,
-            "JLG HUB 5 and 6": hub56_file,
-            "IL": il_file,
+            "Monthly Outstanding SMS Data JLG HUB 1": hub1_file,
+            "Monthly Outstanding SMS Data JLG HUB 2": hub2_file,
+            "Monthly Outstanding SMS Data JLG HUB 3": hub3_file,
+            "Monthly Outstanding SMS Data JLG HUB 4": hub4_file,
+            "Monthly Outstanding SMS Data JLG HUB 5 and 6": hub56_file,
+            "Monthly Outstanding SMS Data IL": il_file,
             "Loan OS Write Off": writeoff_file,
             "Loan OS Write Off IL": writeoff_il_file,
         }
@@ -185,14 +185,38 @@ elif selected_report == "1) SMS Report":
             for m in missing:
                 st.write(f"❌ {m}")
 
-        else:
+                else:
 
+            import tempfile
             from accounts_reports.sms_report import process_sms_report
 
             with st.spinner("Processing SMS Reports..."):
-                result = process_sms_report(required_files)
 
-            st.success("SMS raw files loaded successfully.")
+                with tempfile.TemporaryDirectory() as workdir:
 
-            for k in result.keys():
-                st.write(f"✅ {k}")
+                    summary, zip_path = process_sms_report(
+                        files=required_files,
+                        output_dir=workdir
+                    )
+
+                    with open(zip_path, "rb") as f:
+                        zip_bytes = f.read()
+
+            st.success("SMS Report processed successfully. 16 output files created.")
+
+            st.write("### Processing Summary")
+
+            for item in summary:
+                st.write(
+                    f"✅ {item['report_name']} | "
+                    f"Arrear Free: {item['arrear_free_rows']} rows | "
+                    f"Arrear: {item['arrear_rows']} rows"
+                )
+
+            st.download_button(
+                "⬇️ Download SMS Report Output ZIP",
+                data=zip_bytes,
+                file_name="SMS_Report_Output.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
