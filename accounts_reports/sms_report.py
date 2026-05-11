@@ -2,9 +2,6 @@ import os
 import re
 import zipfile
 import pandas as pd
-from openpyxl import load_workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
 
 def clean_file_name(name):
@@ -13,56 +10,24 @@ def clean_file_name(name):
     return name.strip()
 
 
-def find_column(df, required_col):
-    target = required_col.strip().lower().replace(" ", "").replace("_", "")
-    for col in df.columns:
-        current = str(col).strip().lower().replace(" ", "").replace("_", "")
-        if current == target:
+def norm_col(col):
+    return str(col).strip().lower().replace(" ", "").replace("_", "")
+
+
+def find_column(columns, required_col):
+    target = norm_col(required_col)
+    for col in columns:
+        if norm_col(col) == target:
             return col
     return None
 
 
-def format_excel_file(file_path):
-    wb = load_workbook(file_path)
-    ws = wb.active
+def get_required_columns(uploaded_file, od_column_name, report_name):
+    header_df = pd.read_excel(uploaded_file, nrows=0)
+    columns = list(header_df.columns)
 
-    ws.freeze_panes = "A2"
-    ws.sheet_view.showGridLines = False
-
-    header_fill = PatternFill("solid", fgColor="BDD7EE")
-    header_font = Font(bold=True, color="000000")
-    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    thin = Side(style="thin", color="000000")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = center
-        cell.border = border
-
-    for row in ws.iter_rows(min_row=2):
-        for cell in row:
-            cell.border = border
-            cell.alignment = Alignment(vertical="center")
-
-    for col in ws.columns:
-        max_len = 0
-        col_letter = get_column_letter(col[0].column)
-        for cell in col:
-            if cell.value is not None:
-                max_len = max(max_len, len(str(cell.value)))
-        ws.column_dimensions[col_letter].width = min(max_len + 2, 45)
-
-    wb.save(file_path)
-
-
-def split_arrear_files(uploaded_file, report_name, od_column_name, output_dir):
-    df = pd.read_excel(uploaded_file)
-    df.columns = [str(c).strip() for c in df.columns]
-
-    status_col = find_column(df, "status")
-    od_col = find_column(df, od_column_name)
+    status_col = find_column(columns, "status")
+    od_col = find_column(columns, od_column_name)
 
     if status_col is None:
         raise ValueError(f"Status column not found in {report_name}")
@@ -70,7 +35,29 @@ def split_arrear_files(uploaded_file, report_name, od_column_name, output_dir):
     if od_col is None:
         raise ValueError(f"{od_column_name} column not found in {report_name}")
 
-    # Remove Death cases
+    uploaded_file.seek(0)
+    return status_col, od_col
+
+
+def split_arrear_files(uploaded_file, report_name, od_column_name, output_dir):
+    status_col, od_col = get_required_columns(
+        uploaded_file,
+        od_column_name,
+        report_name
+    )
+
+    uploaded_file.seek(0)
+
+    df = pd.read_excel(
+        uploaded_file,
+        usecols=[status_col, od_col]
+    )
+
+    df.columns = [str(c).strip() for c in df.columns]
+
+    status_col = find_column(df.columns, "status")
+    od_col = find_column(df.columns, od_column_name)
+
     df = df[
         ~df[status_col]
         .astype(str)
@@ -94,9 +81,6 @@ def split_arrear_files(uploaded_file, report_name, od_column_name, output_dir):
 
     arrear_free_df.to_excel(arrear_free_path, index=False)
     arrear_df.to_excel(arrear_path, index=False)
-
-    format_excel_file(arrear_free_path)
-    format_excel_file(arrear_path)
 
     return {
         "report_name": safe_report_name,
