@@ -1,12 +1,36 @@
-import pandas as pd
+else:
 
-def process_sms_report(files):
+    import tempfile
+    import os
+    from accounts_reports.sms_report import process_sms_report
 
-    loaded = {}
+    with st.spinner("Processing SMS Reports..."):
 
-    for key, file in files.items():
+        with tempfile.TemporaryDirectory() as workdir:
 
-        if file is not None:
-            loaded[key] = pd.read_excel(file)
+            summary, zip_path = process_sms_report(
+                files=required_files,
+                output_dir=workdir
+            )
 
-    return loaded
+            with open(zip_path, "rb") as f:
+                zip_bytes = f.read()
+
+    st.success("SMS Report processed successfully. 16 output files created.")
+
+    st.write("### Processing Summary")
+
+    for item in summary:
+        st.write(
+            f"✅ {item['report_name']} | "
+            f"Arrear Free: {item['arrear_free_rows']} rows | "
+            f"Arrear: {item['arrear_rows']} rows"
+        )
+
+    st.download_button(
+        "⬇️ Download SMS Report Output ZIP",
+        data=zip_bytes,
+        file_name="SMS_Report_Output.zip",
+        mime="application/zip",
+        use_container_width=True
+    )
