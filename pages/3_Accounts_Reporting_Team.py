@@ -1,6 +1,6 @@
 import streamlit as st
 from auth_utils import require_role, log_activity
-
+from ui import load_global_css
 # =========================================================
 # PAGE CONFIG - must be first Streamlit command
 # =========================================================
@@ -9,7 +9,7 @@ st.set_page_config(
     page_icon="📘",
     layout="wide"
 )
-
+load_global_css()
 # Hide default Streamlit sidebar navigation
 st.markdown("""
 <style>
