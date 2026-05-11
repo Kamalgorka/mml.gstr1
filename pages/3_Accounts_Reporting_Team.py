@@ -1,6 +1,15 @@
 import streamlit as st
 from auth_utils import require_role, log_activity
 
+# =========================================================
+# PAGE CONFIG - must be first Streamlit command
+# =========================================================
+st.set_page_config(
+    page_title="Accounts Reporting Team",
+    page_icon="📘",
+    layout="wide"
+)
+
 # Hide default Streamlit sidebar navigation
 st.markdown("""
 <style>
@@ -9,6 +18,7 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 # Sidebar Menu
 def role_sidebar():
@@ -56,25 +66,17 @@ log_activity("PAGE_OPEN", "Accounts Reporting Team")
 
 
 # =========================================================
-# PAGE CONFIG
+# MAIN PAGE
 # =========================================================
-
-st.set_page_config(
-    page_title="Accounts Reporting Team",
-    page_icon="📘",
-    layout="wide"
-)
-
 st.title("📘 Accounts Reporting Team - Reports Automisation")
 
 st.markdown(
     "Select report from below and upload required files to generate output."
 )
 
-# Report selection
 report_options = [
     "Select Report",
-    "1) Sample Accounts Report"
+    "1) SMS Report"
 ]
 
 selected_report = st.selectbox(
@@ -84,30 +86,113 @@ selected_report = st.selectbox(
 
 st.markdown("---")
 
+
 if selected_report == "Select Report":
     st.info("Please select a report to continue.")
 
-elif selected_report == "1) Sample Accounts Report":
 
-    st.subheader("📘 Sample Accounts Report")
+elif selected_report == "1) SMS Report":
+
+    st.subheader("📩 SMS Report Automation")
 
     st.caption(
-        "Upload required files > Run Automation > Download Output"
+        "Upload all required raw MIS files and run automation."
     )
 
-    file1 = st.file_uploader(
-        "1) Upload Input File",
-        type=["xlsx", "xls", "csv"]
-    )
+    col1, col2 = st.columns(2)
 
-    run_btn = st.button("🚀 Run Automation")
+    with col1:
+
+        hub1_file = st.file_uploader(
+            "Monthly Outstanding SMS Data JLG HUB 1",
+            type=["xlsx", "xls"],
+            key="hub1"
+        )
+
+        hub2_file = st.file_uploader(
+            "Monthly Outstanding SMS Data JLG HUB 2",
+            type=["xlsx", "xls"],
+            key="hub2"
+        )
+
+        hub3_file = st.file_uploader(
+            "Monthly Outstanding SMS Data JLG HUB 3",
+            type=["xlsx", "xls"],
+            key="hub3"
+        )
+
+        hub4_file = st.file_uploader(
+            "Monthly Outstanding SMS Data JLG HUB 4",
+            type=["xlsx", "xls"],
+            key="hub4"
+        )
+
+    with col2:
+
+        hub56_file = st.file_uploader(
+            "Monthly Outstanding SMS Data JLG HUB 5 and 6",
+            type=["xlsx", "xls"],
+            key="hub56"
+        )
+
+        il_file = st.file_uploader(
+            "Monthly Outstanding SMS Data IL",
+            type=["xlsx", "xls"],
+            key="il"
+        )
+
+        writeoff_file = st.file_uploader(
+            "Loan OS Write Off",
+            type=["xlsx", "xls"],
+            key="writeoff"
+        )
+
+        writeoff_il_file = st.file_uploader(
+            "Loan OS Write Off IL",
+            type=["xlsx", "xls"],
+            key="writeoff_il"
+        )
+
+    st.markdown("---")
+
+    run_btn = st.button(
+        "🚀 Run SMS Automation",
+        use_container_width=True
+    )
 
     if run_btn:
 
-        if file1 is None:
-            st.error("Please upload the required file.")
+        required_files = {
+            "JLG HUB 1": hub1_file,
+            "JLG HUB 2": hub2_file,
+            "JLG HUB 3": hub3_file,
+            "JLG HUB 4": hub4_file,
+            "JLG HUB 5 and 6": hub56_file,
+            "IL": il_file,
+            "Loan OS Write Off": writeoff_file,
+            "Loan OS Write Off IL": writeoff_il_file,
+        }
+
+        missing = [
+            name for name, file in required_files.items()
+            if file is None
+        ]
+
+        if missing:
+
+            st.error("Please upload all required files.")
+
+            for m in missing:
+                st.write(f"❌ {m}")
 
         else:
-            st.success(
-                "File uploaded successfully. Automation logic will be added here."
-            )
+
+            from accounts_reports.sms_report import process_sms_report
+
+            with st.spinner("Processing SMS Reports..."):
+                result = process_sms_report(required_files)
+
+            st.success("SMS raw files loaded successfully.")
+
+            for k in result.keys():
+                st.write(f"✅ {k}")
