@@ -185,7 +185,7 @@ elif selected_report == "1) SMS Report":
             for m in missing:
                 st.write(f"❌ {m}")
 
-                else:
+        else:
 
             import tempfile
             from accounts_reports.sms_report import process_sms_report
