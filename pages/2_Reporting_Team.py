@@ -38,6 +38,12 @@ def role_sidebar():
     if role in ["HO", "ADMIN"]:
         st.sidebar.page_link("pages/1_HO_Team.py", label="HO Team", icon="🏢")
 
+    if role in ["ACCOUNTS", "ADMIN"]:
+        st.sidebar.page_link(
+            "pages/3_Accounts_Reporting_Team.py",
+            label="Accounts Reporting Team",
+            icon="📘"
+        )
     st.sidebar.markdown("---")
 
     if st.sidebar.button("🚪 Logout"):
