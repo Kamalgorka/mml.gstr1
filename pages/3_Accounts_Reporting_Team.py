@@ -129,10 +129,16 @@ elif selected_report == "1) SMS Report":
 
     with col2:
 
-        hub56_file = st.file_uploader(
-            "Monthly Outstanding SMS Data JLG HUB 5 and 6",
+        hub5_file = st.file_uploader(
+            "Monthly Outstanding SMS Data JLG HUB 5",
             type=["xlsx", "xls"],
-            key="hub56"
+            key="hub5"
+        )
+
+        hub6_file = st.file_uploader(
+            "Monthly Outstanding SMS Data JLG HUB 6",
+            type=["xlsx", "xls"],
+            key="hub6"
         )
 
         il_file = st.file_uploader(
@@ -140,7 +146,6 @@ elif selected_report == "1) SMS Report":
             type=["xlsx", "xls"],
             key="il"
         )
-
         writeoff_file = st.file_uploader(
             "Loan OS Write Off",
             type=["xlsx", "xls"],
@@ -167,7 +172,8 @@ elif selected_report == "1) SMS Report":
             "Monthly Outstanding SMS Data JLG HUB 2": hub2_file,
             "Monthly Outstanding SMS Data JLG HUB 3": hub3_file,
             "Monthly Outstanding SMS Data JLG HUB 4": hub4_file,
-            "Monthly Outstanding SMS Data JLG HUB 5 and 6": hub56_file,
+            "Monthly Outstanding SMS Data JLG HUB 5": hub5_file,
+            "Monthly Outstanding SMS Data JLG HUB 6": hub6_file,
             "Monthly Outstanding SMS Data IL": il_file,
             "Loan OS Write Off": writeoff_file,
             "Loan OS Write Off IL": writeoff_il_file,
