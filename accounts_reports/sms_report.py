@@ -62,7 +62,7 @@ def get_actual_columns(columns, required_cols, report_name):
 def apply_red_highlighting(file_path):
     """
     Used only for Write Off Consolidated.xlsx.
-    Monthly files are CSV for faster processing, so no red highlighting there.
+    Monthly files are CSV for speed, so no red highlighting there.
     """
     wb = load_workbook(file_path)
     ws = wb.active
@@ -92,23 +92,41 @@ def apply_red_highlighting(file_path):
     wb.save(file_path)
 
 
-def add_arrear_free_discrepancy_fast(df):
+def add_sms_discrepancy_fast(df, check_total_arrear=False):
     principal_col = find_column(df.columns, "outstanding_principal")
     interest_col = find_column(df.columns, "outstanding_interest")
     total_outstanding_col = find_column(df.columns, "total_outstanding")
 
     if principal_col is None:
-        raise ValueError("Column 'outstanding_principal' not found in Arrear Free file")
+        raise ValueError("Column 'outstanding_principal' not found")
 
     if interest_col is None:
-        raise ValueError("Column 'outstanding_interest' not found in Arrear Free file")
+        raise ValueError("Column 'outstanding_interest' not found")
 
     if total_outstanding_col is None:
-        raise ValueError("Column 'total_outstanding' not found in Arrear Free file")
+        raise ValueError("Column 'total_outstanding' not found")
 
-    df[principal_col] = pd.to_numeric(df[principal_col], errors="coerce").fillna(0)
-    df[interest_col] = pd.to_numeric(df[interest_col], errors="coerce").fillna(0)
-    df[total_outstanding_col] = pd.to_numeric(df[total_outstanding_col], errors="coerce").fillna(0)
+    required_numeric_cols = [
+        principal_col,
+        interest_col,
+        total_outstanding_col,
+    ]
+
+    total_arrear_col = None
+
+    if check_total_arrear:
+        total_arrear_col = find_column(df.columns, "total_arrear")
+
+        if total_arrear_col is None:
+            total_arrear_col = find_column(df.columns, "total_arrear_sum")
+
+        if total_arrear_col is None:
+            raise ValueError("Column 'total_arrear' or 'total_arrear_sum' not found")
+
+        required_numeric_cols.append(total_arrear_col)
+
+    for col in required_numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
     calculated_total = df[principal_col] + df[interest_col]
 
@@ -134,6 +152,18 @@ def add_arrear_free_discrepancy_fast(df):
     discrepancy.loc[interest_negative_mask] += (
         "outstanding_interest is negative; "
     )
+
+    if check_total_arrear and total_arrear_col is not None:
+        total_arrear_negative_mask = df[total_arrear_col] < 0
+        outstanding_less_than_arrear_mask = df[total_outstanding_col] < df[total_arrear_col]
+
+        discrepancy.loc[total_arrear_negative_mask] += (
+            f"{total_arrear_col} is negative; "
+        )
+
+        discrepancy.loc[outstanding_less_than_arrear_mask] += (
+            "total_outstanding is less than total_arrear; "
+        )
 
     df["Discrepancy"] = discrepancy.str.strip("; ")
 
@@ -186,7 +216,17 @@ def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir)
     arrear_free_df = df[df[od_col] == 0].copy()
     arrear_df = df[df[od_col] > 0].copy()
 
-    arrear_free_df = add_arrear_free_discrepancy_fast(arrear_free_df)
+    # Arrear Free validations
+    arrear_free_df = add_sms_discrepancy_fast(
+        arrear_free_df,
+        check_total_arrear=False
+    )
+
+    # Arrear validations
+    arrear_df = add_sms_discrepancy_fast(
+        arrear_df,
+        check_total_arrear=True
+    )
 
     safe_name = clean_file_name(report_name)
 
@@ -196,14 +236,16 @@ def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir)
     arrear_free_df.to_csv(arrear_free_path, index=False, encoding="utf-8-sig")
     arrear_df.to_csv(arrear_path, index=False, encoding="utf-8-sig")
 
-    discrepancy_count = int((arrear_free_df["Discrepancy"] != "").sum())
+    arrear_free_discrepancy_count = int((arrear_free_df["Discrepancy"] != "").sum())
+    arrear_discrepancy_count = int((arrear_df["Discrepancy"] != "").sum())
 
     return {
         "report_name": safe_name,
         "type": "monthly",
         "arrear_free_rows": len(arrear_free_df),
         "arrear_rows": len(arrear_df),
-        "arrear_free_discrepancy_rows": discrepancy_count,
+        "arrear_free_discrepancy_rows": arrear_free_discrepancy_count,
+        "arrear_discrepancy_rows": arrear_discrepancy_count,
         "total_rows_after_death_removed": len(df),
     }
 
@@ -371,7 +413,6 @@ def process_sms_report(files, output_dir, progress_callback=None):
     }
 
     summary = []
-
     total_steps = len(monthly_report_config) + 2
     current_step = 0
 
