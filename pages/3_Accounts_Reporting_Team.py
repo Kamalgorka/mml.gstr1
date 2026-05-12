@@ -224,12 +224,20 @@ elif selected_report == "1) SMS Report":
             st.write("### Processing Summary")
 
             for item in summary:
-                st.write(
-                    f"✅ {item['report_name']} | "
-                    f"Arrear Free: {item['arrear_free_rows']} rows | "
-                    f"Arrear: {item['arrear_rows']} rows"
-                )
 
+                if item.get("type") == "monthly":
+                    st.write(
+                        f"✅ {item['report_name']} | "
+                        f"Arrear Free: {item['arrear_free_rows']} rows | "
+                        f"Arrear: {item['arrear_rows']} rows"
+                    )
+
+                elif item.get("type") == "writeoff":
+                    st.write(
+                        f"✅ {item['report_name']} | "
+                        f"WriteOff rows: {item['total_writeoff_rows_after_filter']} | "
+                        f"Unique Cust IDs: {item['unique_cust_id_rows']}"
+                    )
             st.download_button(
                 "⬇️ Download SMS Report Output ZIP",
                 data=zip_bytes,
