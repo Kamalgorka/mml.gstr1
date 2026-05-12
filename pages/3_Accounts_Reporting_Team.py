@@ -190,17 +190,28 @@ elif selected_report == "1) SMS Report":
             import tempfile
             from accounts_reports.sms_report import process_sms_report
 
+            progress_bar = st.progress(0)
+            status_box = st.empty()
+
+            def update_progress(percent, message):
+                progress_bar.progress(percent)
+                status_box.write(f"⏳ {percent}% - {message}")
+
             with st.spinner("Processing SMS Reports..."):
 
                 with tempfile.TemporaryDirectory() as workdir:
 
                     summary, zip_path = process_sms_report(
                         files=required_files,
-                        output_dir=workdir
+                        output_dir=workdir,
+                        progress_callback=update_progress
                     )
 
                     with open(zip_path, "rb") as f:
                         zip_bytes = f.read()
+
+            progress_bar.progress(100)
+            status_box.success("✅ 100% - SMS Report processing completed.")
 
             st.success("SMS Report processed successfully. 16 output files created.")
 
@@ -220,3 +231,4 @@ elif selected_report == "1) SMS Report":
                 mime="application/zip",
                 use_container_width=True
             )
+        
