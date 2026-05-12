@@ -2,6 +2,8 @@ import os
 import re
 import zipfile
 import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 
 
 WRITE_OFF_OUTPUT_COLUMNS = [
@@ -13,6 +15,12 @@ WRITE_OFF_OUTPUT_COLUMNS = [
     "member_name",
     "mobile_number",
     "od_days",
+    "total_arrear",
+    "outstanding_principal",
+    "outstanding_interest",
+]
+
+AMOUNT_COLUMNS = [
     "total_arrear",
     "outstanding_principal",
     "outstanding_interest",
@@ -39,15 +47,11 @@ def find_column(columns, required_col):
 
 def get_actual_columns(columns, required_cols, report_name):
     actual_cols = []
-
     for col in required_cols:
         actual = find_column(columns, col)
-
         if actual is None:
             raise ValueError(f"Column '{col}' not found in {report_name}")
-
         actual_cols.append(actual)
-
     return actual_cols
 
 
@@ -67,14 +71,12 @@ def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir)
         raise ValueError(f"{od_column_name} column not found in {report_name}")
 
     uploaded_file.seek(0)
-
     df = pd.read_excel(uploaded_file, usecols=all_columns)
     df.columns = [str(c).strip() for c in df.columns]
 
     status_col = find_column(df.columns, "status")
     od_col = find_column(df.columns, od_column_name)
 
-    # Remove Death cases
     df = df[
         ~df[status_col]
         .astype(str)
@@ -90,11 +92,8 @@ def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir)
 
     safe_name = clean_file_name(report_name)
 
-    arrear_free_name = f"Arrear Free {safe_name}.csv"
-    arrear_name = f"Arrear {safe_name}.csv"
-
-    arrear_free_path = os.path.join(output_dir, arrear_free_name)
-    arrear_path = os.path.join(output_dir, arrear_name)
+    arrear_free_path = os.path.join(output_dir, f"Arrear Free {safe_name}.csv")
+    arrear_path = os.path.join(output_dir, f"Arrear {safe_name}.csv")
 
     arrear_free_df.to_csv(arrear_free_path, index=False, encoding="utf-8-sig")
     arrear_df.to_csv(arrear_path, index=False, encoding="utf-8-sig")
@@ -121,19 +120,39 @@ def read_writeoff_file(uploaded_file, report_name):
     )
 
     uploaded_file.seek(0)
-
     df = pd.read_excel(uploaded_file, usecols=usecols)
     df.columns = [str(c).strip() for c in df.columns]
 
     rename_map = {}
-
     for required_col in WRITE_OFF_OUTPUT_COLUMNS:
         actual_col = find_column(df.columns, required_col)
         rename_map[actual_col] = required_col
 
     df = df.rename(columns=rename_map)
-
     return df[WRITE_OFF_OUTPUT_COLUMNS].copy()
+
+
+def apply_writeoff_highlighting(file_path):
+    wb = load_workbook(file_path)
+    ws = wb.active
+
+    red_fill = PatternFill(
+        start_color="FFC7CE",
+        end_color="FFC7CE",
+        fill_type="solid"
+    )
+
+    headers = [cell.value for cell in ws[1]]
+    discrepancy_col_idx = headers.index("Discrepancy") + 1
+
+    for row in range(2, ws.max_row + 1):
+        discrepancy = ws.cell(row=row, column=discrepancy_col_idx).value
+
+        if discrepancy:
+            for col in range(1, ws.max_column + 1):
+                ws.cell(row=row, column=col).fill = red_fill
+
+    wb.save(file_path)
 
 
 def process_writeoff_files(files, output_dir):
@@ -149,7 +168,6 @@ def process_writeoff_files(files, output_dir):
 
     df = pd.concat([wo_df, wo_il_df], ignore_index=True)
 
-    # Keep only WriteOff cases
     df = df[
         df["status"]
         .astype(str)
@@ -159,14 +177,12 @@ def process_writeoff_files(files, output_dir):
     ].copy()
 
     if df.empty:
-        output_df = pd.DataFrame(columns=WRITE_OFF_OUTPUT_COLUMNS)
+        output_df = pd.DataFrame(
+            columns=WRITE_OFF_OUTPUT_COLUMNS + ["total_outstanding", "Discrepancy"]
+        )
+
     else:
-        for col in [
-            "od_days",
-            "total_arrear",
-            "outstanding_principal",
-            "outstanding_interest",
-        ]:
+        for col in ["od_days"] + AMOUNT_COLUMNS:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
         output_df = (
@@ -185,6 +201,28 @@ def process_writeoff_files(files, output_dir):
             })
         )
 
+        output_df["total_outstanding"] = (
+            output_df["outstanding_principal"] +
+            output_df["outstanding_interest"]
+        )
+
+        def check_discrepancy(row):
+            issues = []
+
+            if row["total_outstanding"] <= 0:
+                issues.append("Total Outstanding is zero/negative")
+
+            for col in AMOUNT_COLUMNS:
+                if row[col] < 0:
+                    issues.append(f"{col} is negative")
+
+            if row["total_outstanding"] < row["total_arrear"]:
+                issues.append("Total Outstanding is less than Total Arrear")
+
+            return "; ".join(issues)
+
+        output_df["Discrepancy"] = output_df.apply(check_discrepancy, axis=1)
+
         output_df = output_df[
             [
                 "ZONE",
@@ -198,17 +236,22 @@ def process_writeoff_files(files, output_dir):
                 "total_arrear",
                 "outstanding_principal",
                 "outstanding_interest",
+                "total_outstanding",
+                "Discrepancy",
             ]
         ]
 
-    output_path = os.path.join(output_dir, "Write Off Consolidated.csv")
-    output_df.to_csv(output_path, index=False, encoding="utf-8-sig")
+    output_path = os.path.join(output_dir, "Write Off Consolidated.xlsx")
+    output_df.to_excel(output_path, index=False)
+
+    apply_writeoff_highlighting(output_path)
 
     return {
         "report_name": "Write Off Consolidated",
         "type": "writeoff",
         "total_writeoff_rows_after_filter": len(df),
         "unique_cust_id_rows": len(output_df),
+        "discrepancy_rows": int((output_df["Discrepancy"] != "").sum()),
     }
 
 
@@ -247,7 +290,6 @@ def process_sms_report(files, output_dir, progress_callback=None):
     }
 
     summary = []
-
     total_steps = len(monthly_report_config) + 2
     current_step = 0
 
@@ -297,7 +339,7 @@ def process_sms_report(files, output_dir, progress_callback=None):
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for file in os.listdir(output_dir):
-            if file.endswith(".csv"):
+            if file.endswith(".csv") or file.endswith(".xlsx"):
                 zipf.write(
                     os.path.join(output_dir, file),
                     arcname=file
