@@ -237,6 +237,7 @@ elif selected_report == "1) SMS Report":
                         f"✅ {item['report_name']} | "
                         f"WriteOff rows: {item['total_writeoff_rows_after_filter']} | "
                         f"Unique Cust IDs: {item['unique_cust_id_rows']}"
+                        f"Discrepancies: {item['discrepancy_rows']}"
                     )
             st.download_button(
                 "⬇️ Download SMS Report Output ZIP",
