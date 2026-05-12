@@ -55,6 +55,82 @@ def get_actual_columns(columns, required_cols, report_name):
     return actual_cols
 
 
+def apply_red_highlighting(file_path):
+    wb = load_workbook(file_path)
+    ws = wb.active
+
+    red_fill = PatternFill(
+        start_color="FFC7CE",
+        end_color="FFC7CE",
+        fill_type="solid"
+    )
+
+    headers = [cell.value for cell in ws[1]]
+
+    if "Discrepancy" not in headers:
+        wb.save(file_path)
+        return
+
+    discrepancy_col_idx = headers.index("Discrepancy") + 1
+
+    for row in range(2, ws.max_row + 1):
+        discrepancy = ws.cell(row=row, column=discrepancy_col_idx).value
+
+        if discrepancy:
+            for col in range(1, ws.max_column + 1):
+                ws.cell(row=row, column=col).fill = red_fill
+
+    ws.freeze_panes = "A2"
+    wb.save(file_path)
+
+
+def add_arrear_free_discrepancy(df):
+    principal_col = find_column(df.columns, "outstanding_principal")
+    interest_col = find_column(df.columns, "outstanding_interest")
+    total_outstanding_col = find_column(df.columns, "total_outstanding")
+
+    if principal_col is None:
+        raise ValueError("Column 'outstanding_principal' not found in Arrear Free file")
+
+    if interest_col is None:
+        raise ValueError("Column 'outstanding_interest' not found in Arrear Free file")
+
+    if total_outstanding_col is None:
+        raise ValueError("Column 'total_outstanding' not found in Arrear Free file")
+
+    df[principal_col] = pd.to_numeric(df[principal_col], errors="coerce").fillna(0)
+    df[interest_col] = pd.to_numeric(df[interest_col], errors="coerce").fillna(0)
+    df[total_outstanding_col] = pd.to_numeric(df[total_outstanding_col], errors="coerce").fillna(0)
+
+    calculated_total = df[principal_col] + df[interest_col]
+
+    def check_row(row):
+        issues = []
+
+        principal = row[principal_col]
+        interest = row[interest_col]
+        total_outstanding = row[total_outstanding_col]
+        calculated = principal + interest
+
+        if round(calculated, 2) != round(total_outstanding, 2):
+            issues.append("Outstanding principal + interest not matched with total_outstanding")
+
+        if total_outstanding <= 0:
+            issues.append("Total Outstanding is zero/negative")
+
+        if principal < 0:
+            issues.append("outstanding_principal is negative")
+
+        if interest < 0:
+            issues.append("outstanding_interest is negative")
+
+        return "; ".join(issues)
+
+    df["Discrepancy"] = df.apply(check_row, axis=1)
+
+    return df
+
+
 def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir):
     uploaded_file.seek(0)
 
@@ -90,19 +166,26 @@ def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir)
     arrear_free_df = df[df[od_col] == 0].copy()
     arrear_df = df[df[od_col] > 0].copy()
 
+    arrear_free_df = add_arrear_free_discrepancy(arrear_free_df)
+
     safe_name = clean_file_name(report_name)
 
-    arrear_free_path = os.path.join(output_dir, f"Arrear Free {safe_name}.csv")
+    arrear_free_path = os.path.join(output_dir, f"Arrear Free {safe_name}.xlsx")
     arrear_path = os.path.join(output_dir, f"Arrear {safe_name}.csv")
 
-    arrear_free_df.to_csv(arrear_free_path, index=False, encoding="utf-8-sig")
+    arrear_free_df.to_excel(arrear_free_path, index=False)
     arrear_df.to_csv(arrear_path, index=False, encoding="utf-8-sig")
+
+    apply_red_highlighting(arrear_free_path)
+
+    discrepancy_count = int((arrear_free_df["Discrepancy"] != "").sum())
 
     return {
         "report_name": safe_name,
         "type": "monthly",
         "arrear_free_rows": len(arrear_free_df),
         "arrear_rows": len(arrear_df),
+        "arrear_free_discrepancy_rows": discrepancy_count,
         "total_rows_after_death_removed": len(df),
     }
 
@@ -130,29 +213,6 @@ def read_writeoff_file(uploaded_file, report_name):
 
     df = df.rename(columns=rename_map)
     return df[WRITE_OFF_OUTPUT_COLUMNS].copy()
-
-
-def apply_writeoff_highlighting(file_path):
-    wb = load_workbook(file_path)
-    ws = wb.active
-
-    red_fill = PatternFill(
-        start_color="FFC7CE",
-        end_color="FFC7CE",
-        fill_type="solid"
-    )
-
-    headers = [cell.value for cell in ws[1]]
-    discrepancy_col_idx = headers.index("Discrepancy") + 1
-
-    for row in range(2, ws.max_row + 1):
-        discrepancy = ws.cell(row=row, column=discrepancy_col_idx).value
-
-        if discrepancy:
-            for col in range(1, ws.max_column + 1):
-                ws.cell(row=row, column=col).fill = red_fill
-
-    wb.save(file_path)
 
 
 def process_writeoff_files(files, output_dir):
@@ -244,7 +304,7 @@ def process_writeoff_files(files, output_dir):
     output_path = os.path.join(output_dir, "Write Off Consolidated.xlsx")
     output_df.to_excel(output_path, index=False)
 
-    apply_writeoff_highlighting(output_path)
+    apply_red_highlighting(output_path)
 
     return {
         "report_name": "Write Off Consolidated",
