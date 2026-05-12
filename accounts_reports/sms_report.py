@@ -47,15 +47,23 @@ def find_column(columns, required_col):
 
 def get_actual_columns(columns, required_cols, report_name):
     actual_cols = []
+
     for col in required_cols:
         actual = find_column(columns, col)
+
         if actual is None:
             raise ValueError(f"Column '{col}' not found in {report_name}")
+
         actual_cols.append(actual)
+
     return actual_cols
 
 
 def apply_red_highlighting(file_path):
+    """
+    Used only for Write Off Consolidated.xlsx.
+    Monthly files are CSV for faster processing, so no red highlighting there.
+    """
     wb = load_workbook(file_path)
     ws = wb.active
 
@@ -84,7 +92,7 @@ def apply_red_highlighting(file_path):
     wb.save(file_path)
 
 
-def add_arrear_free_discrepancy(df):
+def add_arrear_free_discrepancy_fast(df):
     principal_col = find_column(df.columns, "outstanding_principal")
     interest_col = find_column(df.columns, "outstanding_interest")
     total_outstanding_col = find_column(df.columns, "total_outstanding")
@@ -104,29 +112,30 @@ def add_arrear_free_discrepancy(df):
 
     calculated_total = df[principal_col] + df[interest_col]
 
-    def check_row(row):
-        issues = []
+    mismatch_mask = calculated_total.round(2) != df[total_outstanding_col].round(2)
+    total_zero_negative_mask = df[total_outstanding_col] <= 0
+    principal_negative_mask = df[principal_col] < 0
+    interest_negative_mask = df[interest_col] < 0
 
-        principal = row[principal_col]
-        interest = row[interest_col]
-        total_outstanding = row[total_outstanding_col]
-        calculated = principal + interest
+    discrepancy = pd.Series("", index=df.index, dtype="object")
 
-        if round(calculated, 2) != round(total_outstanding, 2):
-            issues.append("Outstanding principal + interest not matched with total_outstanding")
+    discrepancy.loc[mismatch_mask] += (
+        "Outstanding principal + interest not matched with total_outstanding; "
+    )
 
-        if total_outstanding <= 0:
-            issues.append("Total Outstanding is zero/negative")
+    discrepancy.loc[total_zero_negative_mask] += (
+        "Total Outstanding is zero/negative; "
+    )
 
-        if principal < 0:
-            issues.append("outstanding_principal is negative")
+    discrepancy.loc[principal_negative_mask] += (
+        "outstanding_principal is negative; "
+    )
 
-        if interest < 0:
-            issues.append("outstanding_interest is negative")
+    discrepancy.loc[interest_negative_mask] += (
+        "outstanding_interest is negative; "
+    )
 
-        return "; ".join(issues)
-
-    df["Discrepancy"] = df.apply(check_row, axis=1)
+    df["Discrepancy"] = discrepancy.str.strip("; ")
 
     return df
 
@@ -146,7 +155,18 @@ def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir)
     if od_col is None:
         raise ValueError(f"{od_column_name} column not found in {report_name}")
 
+    required_check_cols = [
+        "outstanding_principal",
+        "outstanding_interest",
+        "total_outstanding",
+    ]
+
+    for col in required_check_cols:
+        if find_column(all_columns, col) is None:
+            raise ValueError(f"Column '{col}' not found in {report_name}")
+
     uploaded_file.seek(0)
+
     df = pd.read_excel(uploaded_file, usecols=all_columns)
     df.columns = [str(c).strip() for c in df.columns]
 
@@ -166,17 +186,15 @@ def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir)
     arrear_free_df = df[df[od_col] == 0].copy()
     arrear_df = df[df[od_col] > 0].copy()
 
-    arrear_free_df = add_arrear_free_discrepancy(arrear_free_df)
+    arrear_free_df = add_arrear_free_discrepancy_fast(arrear_free_df)
 
     safe_name = clean_file_name(report_name)
 
-    arrear_free_path = os.path.join(output_dir, f"Arrear Free {safe_name}.xlsx")
+    arrear_free_path = os.path.join(output_dir, f"Arrear Free {safe_name}.csv")
     arrear_path = os.path.join(output_dir, f"Arrear {safe_name}.csv")
 
-    arrear_free_df.to_excel(arrear_free_path, index=False)
+    arrear_free_df.to_csv(arrear_free_path, index=False, encoding="utf-8-sig")
     arrear_df.to_csv(arrear_path, index=False, encoding="utf-8-sig")
-
-    apply_red_highlighting(arrear_free_path)
 
     discrepancy_count = int((arrear_free_df["Discrepancy"] != "").sum())
 
@@ -203,15 +221,18 @@ def read_writeoff_file(uploaded_file, report_name):
     )
 
     uploaded_file.seek(0)
+
     df = pd.read_excel(uploaded_file, usecols=usecols)
     df.columns = [str(c).strip() for c in df.columns]
 
     rename_map = {}
+
     for required_col in WRITE_OFF_OUTPUT_COLUMNS:
         actual_col = find_column(df.columns, required_col)
         rename_map[actual_col] = required_col
 
     df = df.rename(columns=rename_map)
+
     return df[WRITE_OFF_OUTPUT_COLUMNS].copy()
 
 
@@ -350,6 +371,7 @@ def process_sms_report(files, output_dir, progress_callback=None):
     }
 
     summary = []
+
     total_steps = len(monthly_report_config) + 2
     current_step = 0
 
