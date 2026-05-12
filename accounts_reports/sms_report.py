@@ -1,7 +1,7 @@
 import os
 import re
 import zipfile
-import pandas as pd
+from openpyxl import load_workbook, Workbook
 
 
 WRITE_OFF_OUTPUT_COLUMNS = [
@@ -29,70 +29,69 @@ def norm_col(col):
     return str(col).strip().lower().replace(" ", "").replace("_", "")
 
 
-def find_column(columns, required_col):
-    target = norm_col(required_col)
-    for col in columns:
-        if norm_col(col) == target:
-            return col
-    return None
+def to_number(value):
+    try:
+        if value is None or str(value).strip() == "":
+            return 0
+        return float(value)
+    except Exception:
+        return 0
 
 
-def find_required_columns(columns, required_cols, report_name):
-    mapped_cols = []
-
-    for required in required_cols:
-        actual = find_column(columns, required)
-        if actual is None:
-            raise ValueError(f"Column '{required}' not found in {report_name}")
-        mapped_cols.append(actual)
-
-    return mapped_cols
-
-
-def split_arrear_files(uploaded_file, report_name, od_column_name, output_dir, writeoff_only=False):
+def save_uploaded_file(uploaded_file, output_dir, report_name):
+    raw_path = os.path.join(output_dir, clean_file_name(report_name) + "_RAW.xlsx")
     uploaded_file.seek(0)
 
-    header_df = pd.read_excel(uploaded_file, nrows=0)
-    all_columns = list(header_df.columns)
+    with open(raw_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
 
-    status_col = find_column(all_columns, "status")
-    od_col = find_column(all_columns, od_column_name)
+    return raw_path
 
-    if status_col is None:
+
+def split_arrear_files(
+    uploaded_file,
+    report_name,
+    od_column_name,
+    output_dir,
+    writeoff_only=False
+):
+    raw_path = save_uploaded_file(uploaded_file, output_dir, report_name)
+
+    wb_in = load_workbook(raw_path, read_only=True, data_only=True)
+    ws_in = wb_in.active
+
+    header_row = next(ws_in.iter_rows(min_row=1, max_row=1, values_only=True))
+    headers = list(header_row)
+    norm_headers = [norm_col(h) for h in headers]
+
+    status_key = norm_col("status")
+    od_key = norm_col(od_column_name)
+
+    if status_key not in norm_headers:
         raise ValueError(f"Status column not found in {report_name}")
 
-    if od_col is None:
+    if od_key not in norm_headers:
         raise ValueError(f"{od_column_name} column not found in {report_name}")
 
-    uploaded_file.seek(0)
+    status_idx = norm_headers.index(status_key)
+    od_idx = norm_headers.index(od_key)
 
     if writeoff_only:
-        usecols = find_required_columns(
-            all_columns,
-            WRITE_OFF_OUTPUT_COLUMNS,
-            report_name
-        )
+        output_indexes = []
+        output_headers = []
+
+        for col_name in WRITE_OFF_OUTPUT_COLUMNS:
+            col_key = norm_col(col_name)
+
+            if col_key not in norm_headers:
+                raise ValueError(f"Column '{col_name}' not found in {report_name}")
+
+            idx = norm_headers.index(col_key)
+            output_indexes.append(idx)
+            output_headers.append(headers[idx])
     else:
-        usecols = all_columns
-
-    df = pd.read_excel(uploaded_file, usecols=usecols)
-    df.columns = [str(c).strip() for c in df.columns]
-
-    status_col = find_column(df.columns, "status")
-    od_col = find_column(df.columns, od_column_name)
-
-    df = df[
-        ~df[status_col]
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        .str.contains("death", na=False)
-    ].copy()
-
-    df[od_col] = pd.to_numeric(df[od_col], errors="coerce").fillna(0)
-
-    arrear_free_df = df[df[od_col] == 0].copy()
-    arrear_df = df[df[od_col] > 0].copy()
+        output_indexes = list(range(len(headers)))
+        output_headers = headers
 
     safe_report_name = clean_file_name(report_name)
 
@@ -102,20 +101,58 @@ def split_arrear_files(uploaded_file, report_name, od_column_name, output_dir, w
     arrear_free_path = os.path.join(output_dir, arrear_free_name)
     arrear_path = os.path.join(output_dir, arrear_name)
 
-    arrear_free_df.to_excel(arrear_free_path, index=False)
-    arrear_df.to_excel(arrear_path, index=False)
+    wb_free = Workbook(write_only=True)
+    ws_free = wb_free.create_sheet("Data")
+    ws_free.append(output_headers)
+
+    wb_arrear = Workbook(write_only=True)
+    ws_arrear = wb_arrear.create_sheet("Data")
+    ws_arrear.append(output_headers)
+
+    total_rows = 0
+    arrear_free_rows = 0
+    arrear_rows = 0
+
+    for row in ws_in.iter_rows(min_row=2, values_only=True):
+        status_value = str(row[status_idx] or "").strip().lower()
+
+        if "death" in status_value:
+            continue
+
+        od_value = to_number(row[od_idx])
+        output_row = [row[i] if i < len(row) else None for i in output_indexes]
+
+        total_rows += 1
+
+        if od_value == 0:
+            ws_free.append(output_row)
+            arrear_free_rows += 1
+
+        elif od_value > 0:
+            ws_arrear.append(output_row)
+            arrear_rows += 1
+
+    wb_free.save(arrear_free_path)
+    wb_arrear.save(arrear_path)
+
+    wb_in.close()
+
+    try:
+        os.remove(raw_path)
+    except Exception:
+        pass
 
     return {
         "report_name": safe_report_name,
         "arrear_free_file": arrear_free_name,
         "arrear_file": arrear_name,
-        "total_rows_after_death_removed": len(df),
-        "arrear_free_rows": len(arrear_free_df),
-        "arrear_rows": len(arrear_df),
+        "total_rows_after_death_removed": total_rows,
+        "arrear_free_rows": arrear_free_rows,
+        "arrear_rows": arrear_rows,
     }
 
 
-def process_sms_report(files, output_dir):
+def process_sms_report(files, output_dir, progress_callback=None):
     os.makedirs(output_dir, exist_ok=True)
 
     report_config = {
@@ -162,8 +199,16 @@ def process_sms_report(files, output_dir):
     }
 
     summary = []
+    total_reports = len(report_config)
 
-    for report_name, cfg in report_config.items():
+    for idx, (report_name, cfg) in enumerate(report_config.items(), start=1):
+
+        if progress_callback:
+            progress_callback(
+                int(((idx - 1) / total_reports) * 90),
+                f"Processing {idx}/{total_reports}: {report_name}"
+            )
+
         result = split_arrear_files(
             uploaded_file=cfg["file"],
             report_name=report_name,
@@ -171,7 +216,17 @@ def process_sms_report(files, output_dir):
             output_dir=output_dir,
             writeoff_only=cfg["writeoff_only"],
         )
+
         summary.append(result)
+
+        if progress_callback:
+            progress_callback(
+                int((idx / total_reports) * 90),
+                f"Completed {idx}/{total_reports}: {report_name}"
+            )
+
+    if progress_callback:
+        progress_callback(95, "Creating ZIP file...")
 
     zip_path = os.path.join(output_dir, "SMS_Report_Output.zip")
 
@@ -182,5 +237,8 @@ def process_sms_report(files, output_dir):
                     os.path.join(output_dir, file),
                     arcname=file
                 )
+
+    if progress_callback:
+        progress_callback(100, "Completed.")
 
     return summary, zip_path
