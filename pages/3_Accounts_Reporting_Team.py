@@ -76,7 +76,7 @@ st.markdown(
 
 report_options = [
     "Select Report",
-    "1) SMS Report"
+    "1) SMS Report",
     "2) SMS Report Lot2"
 ]
 
