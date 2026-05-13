@@ -12,7 +12,6 @@ LOOKUP_COLUMNS = [
     "outstanding_interest",
 ]
 
-
 FILL_COLUMNS = [
     "status",
     "od_days",
@@ -39,7 +38,11 @@ def standardize_columns(df):
             rename_map[col] = "status"
         elif n == "oddays":
             rename_map[col] = "od_days"
+        elif n == "maxoddays":
+            rename_map[col] = "max_od_days"
         elif n == "totalarrear":
+            rename_map[col] = "total_arrear"
+        elif n == "totalarrearsum":
             rename_map[col] = "total_arrear"
         elif n == "outstandingprincipal":
             rename_map[col] = "outstanding_principal"
@@ -59,11 +62,82 @@ def read_excel_clean(uploaded_file):
     return df
 
 
+def normalize_cust_id(df):
+    if "cust_id" in df.columns:
+        df["cust_id"] = (
+            df["cust_id"]
+            .astype(str)
+            .str.strip()
+            .str.replace(r"\.0$", "", regex=True)
+        )
+    return df
+
+
+def add_discrepancy_column(df, check_total_arrear=False):
+    required_cols = [
+        "outstanding_principal",
+        "outstanding_interest",
+        "total_outstanding",
+    ]
+
+    if check_total_arrear:
+        required_cols.append("total_arrear")
+
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing columns for validation: {missing}")
+
+    for col in required_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    calculated_total = df["outstanding_principal"] + df["outstanding_interest"]
+
+    mismatch_mask = calculated_total.round(2) != df["total_outstanding"].round(2)
+    total_zero_negative_mask = df["total_outstanding"] <= 0
+    principal_negative_mask = df["outstanding_principal"] < 0
+    interest_negative_mask = df["outstanding_interest"] < 0
+
+    discrepancy = pd.Series("", index=df.index, dtype="object")
+
+    discrepancy.loc[mismatch_mask] += (
+        "total_outstanding not equal to outstanding_principal + outstanding_interest; "
+    )
+
+    discrepancy.loc[total_zero_negative_mask] += (
+        "total_outstanding is zero/negative; "
+    )
+
+    discrepancy.loc[principal_negative_mask] += (
+        "outstanding_principal is negative; "
+    )
+
+    discrepancy.loc[interest_negative_mask] += (
+        "outstanding_interest is negative; "
+    )
+
+    if check_total_arrear:
+        total_arrear_negative_mask = df["total_arrear"] < 0
+        outstanding_less_than_arrear_mask = df["total_outstanding"] < df["total_arrear"]
+
+        discrepancy.loc[total_arrear_negative_mask] += (
+            "total_arrear is negative; "
+        )
+
+        discrepancy.loc[outstanding_less_than_arrear_mask] += (
+            "total_outstanding is less than total_arrear; "
+        )
+
+    df["Discrepancy"] = discrepancy.str.strip("; ")
+
+    return df
+
+
 def build_writeoff_lookup(loan_os_file, loan_os_il_file):
     df1 = read_excel_clean(loan_os_file)
     df2 = read_excel_clean(loan_os_il_file)
 
     df = pd.concat([df1, df2], ignore_index=True)
+    df = normalize_cust_id(df)
 
     missing = [c for c in LOOKUP_COLUMNS if c not in df.columns]
     if missing:
@@ -72,9 +146,8 @@ def build_writeoff_lookup(loan_os_file, loan_os_il_file):
     df = df[LOOKUP_COLUMNS].copy()
 
     df["status"] = df["status"].astype(str).str.strip()
-    df["cust_id"] = df["cust_id"].astype(str).str.strip()
 
-    # Keep only WriteOff cases
+    # Keep only WriteOff cases before consolidation
     df = df[df["status"].str.lower().eq("writeoff")].copy()
 
     for col in [
@@ -106,28 +179,18 @@ def build_writeoff_lookup(loan_os_file, loan_os_il_file):
 
 def enrich_not_sent_writeoff_sms(not_sent_writeoff_file, lookup_df):
     base_df = read_excel_clean(not_sent_writeoff_file)
+    base_df = normalize_cust_id(base_df)
 
     if "cust_id" not in base_df.columns:
         raise ValueError("cust_id column not found in Not Sent Write Off SMS Data")
 
-    base_df["cust_id"] = (
-        base_df["cust_id"]
-        .astype(str)
-        .str.strip()
-        .str.replace(r"\.0$", "", regex=True)
-    )
-
-    lookup_df["cust_id"] = (
-        lookup_df["cust_id"]
-        .astype(str)
-        .str.strip()
-        .str.replace(r"\.0$", "", regex=True)
-    )
+    lookup_df = normalize_cust_id(lookup_df)
 
     for col in FILL_COLUMNS:
         if col not in base_df.columns:
             base_df[col] = ""
 
+    # Inner join removes rows where cust_id is not available after WriteOff-only filter
     merged = base_df.merge(
         lookup_df,
         on="cust_id",
@@ -142,7 +205,44 @@ def enrich_not_sent_writeoff_sms(not_sent_writeoff_file, lookup_df):
             merged[col] = merged[lookup_col].combine_first(merged[col])
             merged.drop(columns=[lookup_col], inplace=True)
 
+    merged = add_discrepancy_column(
+        merged,
+        check_total_arrear=True
+    )
+
     return merged
+
+
+def process_not_sent_sms_data(not_sent_sms_file):
+    df = read_excel_clean(not_sent_sms_file)
+
+    if "status" not in df.columns:
+        raise ValueError("status column not found in Not Sent SMS Data")
+
+    if "max_od_days" not in df.columns:
+        raise ValueError("max_od_days column not found in Not Sent SMS Data")
+
+    df["status"] = df["status"].astype(str).str.strip()
+
+    # Keep only Active cases
+    df = df[df["status"].str.lower().eq("active")].copy()
+
+    df["max_od_days"] = pd.to_numeric(df["max_od_days"], errors="coerce").fillna(0)
+
+    arrear_free_df = df[df["max_od_days"] <= 0].copy()
+    arrear_df = df[df["max_od_days"] > 0].copy()
+
+    arrear_free_df = add_discrepancy_column(
+        arrear_free_df,
+        check_total_arrear=False
+    )
+
+    arrear_df = add_discrepancy_column(
+        arrear_df,
+        check_total_arrear=True
+    )
+
+    return arrear_free_df, arrear_df, len(df)
 
 
 def process_sms_report_lot2(files, output_dir, progress_callback=None):
@@ -157,7 +257,7 @@ def process_sms_report_lot2(files, output_dir, progress_callback=None):
     )
 
     if progress_callback:
-        progress_callback(45, "Updating Not Sent Write Off SMS Data...")
+        progress_callback(35, "Updating and validating Not Sent Write Off SMS Data...")
 
     enriched_writeoff_df = enrich_not_sent_writeoff_sms(
         files["Not Sent Write Off SMS Data"],
@@ -165,22 +265,40 @@ def process_sms_report_lot2(files, output_dir, progress_callback=None):
     )
 
     if progress_callback:
-        progress_callback(70, "Reading Not Sent SMS Data...")
+        progress_callback(60, "Processing Not Sent SMS Data...")
 
-    not_sent_sms_df = read_excel_clean(files["Not Sent SMS Data"])
+    arrear_free_df, arrear_df, active_rows = process_not_sent_sms_data(
+        files["Not Sent SMS Data"]
+    )
 
-    not_sent_sms_path = os.path.join(output_dir, "Not Sent SMS Data.csv")
+    not_sent_arrear_free_path = os.path.join(
+        output_dir,
+        "Arrear Free Not Sent SMS Data.csv"
+    )
+
+    not_sent_arrear_path = os.path.join(
+        output_dir,
+        "Arrear Not Sent SMS Data.csv"
+    )
+
     not_sent_writeoff_path = os.path.join(
         output_dir,
         "Not Sent Write Off SMS Data Updated.csv"
     )
+
     lookup_path = os.path.join(
         output_dir,
         "Loan OS Write Off Consolidated Lookup.csv"
     )
 
-    not_sent_sms_df.to_csv(
-        not_sent_sms_path,
+    arrear_free_df.to_csv(
+        not_sent_arrear_free_path,
+        index=False,
+        encoding="utf-8-sig"
+    )
+
+    arrear_df.to_csv(
+        not_sent_arrear_path,
         index=False,
         encoding="utf-8-sig"
     )
@@ -203,11 +321,21 @@ def process_sms_report_lot2(files, output_dir, progress_callback=None):
     zip_path = os.path.join(output_dir, "SMS_Report_Lot2_Output.zip")
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        zipf.write(not_sent_sms_path, arcname="Not Sent SMS Data.csv")
+        zipf.write(
+            not_sent_arrear_free_path,
+            arcname="Arrear Free Not Sent SMS Data.csv"
+        )
+
+        zipf.write(
+            not_sent_arrear_path,
+            arcname="Arrear Not Sent SMS Data.csv"
+        )
+
         zipf.write(
             not_sent_writeoff_path,
             arcname="Not Sent Write Off SMS Data Updated.csv"
         )
+
         zipf.write(
             lookup_path,
             arcname="Loan OS Write Off Consolidated Lookup.csv"
@@ -218,16 +346,27 @@ def process_sms_report_lot2(files, output_dir, progress_callback=None):
 
     summary = [
         {
-            "report_name": "Not Sent SMS Data",
-            "rows": len(not_sent_sms_df)
+            "report_name": "Arrear Free Not Sent SMS Data",
+            "rows": len(arrear_free_df),
+            "discrepancy_rows": int((arrear_free_df["Discrepancy"] != "").sum())
+        },
+        {
+            "report_name": "Arrear Not Sent SMS Data",
+            "rows": len(arrear_df),
+            "discrepancy_rows": int((arrear_df["Discrepancy"] != "").sum())
         },
         {
             "report_name": "Not Sent Write Off SMS Data Updated",
-            "rows": len(enriched_writeoff_df)
+            "rows": len(enriched_writeoff_df),
+            "discrepancy_rows": int((enriched_writeoff_df["Discrepancy"] != "").sum())
         },
         {
             "report_name": "Loan OS Write Off Consolidated Lookup",
             "rows": len(lookup_df)
+        },
+        {
+            "report_name": "Active cases considered from Not Sent SMS Data",
+            "rows": active_rows
         }
     ]
 
