@@ -77,6 +77,7 @@ st.markdown(
 report_options = [
     "Select Report",
     "1) SMS Report"
+    "2) SMS Report Lot2"
 ]
 
 selected_report = st.selectbox(
@@ -164,7 +165,118 @@ elif selected_report == "1) SMS Report":
         "🚀 Run SMS Automation",
         use_container_width=True
     )
+elif selected_report == "2) SMS Report Lot2":
 
+    st.subheader("📩 SMS Report Lot2 Automation")
+
+    st.caption(
+        "Upload all required raw files and run Lot2 automation."
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        not_sent_sms_file = st.file_uploader(
+            "Not Sent SMS Data",
+            type=["xlsx", "xls"],
+            key="lot2_not_sent_sms"
+        )
+
+        not_sent_writeoff_sms_file = st.file_uploader(
+            "Not Sent Write Off SMS Data",
+            type=["xlsx", "xls"],
+            key="lot2_not_sent_writeoff_sms"
+        )
+
+    with col2:
+
+        loan_os_writeoff_file = st.file_uploader(
+            "Loan OS Write Off",
+            type=["xlsx", "xls"],
+            key="lot2_loan_os_writeoff"
+        )
+
+        loan_os_writeoff_il_file = st.file_uploader(
+            "Loan OS Write Off IL",
+            type=["xlsx", "xls"],
+            key="lot2_loan_os_writeoff_il"
+        )
+
+    st.markdown("---")
+
+    run_btn = st.button(
+        "🚀 Run SMS Lot2 Automation",
+        use_container_width=True,
+        key="run_sms_lot2"
+    )
+
+    if run_btn:
+
+        required_files = {
+            "Not Sent SMS Data": not_sent_sms_file,
+            "Not Sent Write Off SMS Data": not_sent_writeoff_sms_file,
+            "Loan OS Write Off": loan_os_writeoff_file,
+            "Loan OS Write Off IL": loan_os_writeoff_il_file,
+        }
+
+        missing = [
+            name for name, file in required_files.items()
+            if file is None
+        ]
+
+        if missing:
+
+            st.error("Please upload all required files.")
+
+            for m in missing:
+                st.write(f"❌ {m}")
+
+        else:
+
+            import tempfile
+            from accounts_reports.sms_report_lot2 import process_sms_report_lot2
+
+            progress_bar = st.progress(0)
+            status_box = st.empty()
+
+            def update_progress(percent, message):
+                progress_bar.progress(percent)
+                status_box.write(f"⏳ {percent}% - {message}")
+
+            with st.spinner("Processing SMS Report Lot2..."):
+
+                with tempfile.TemporaryDirectory() as workdir:
+
+                    summary, zip_path = process_sms_report_lot2(
+                        files=required_files,
+                        output_dir=workdir,
+                        progress_callback=update_progress
+                    )
+
+                    with open(zip_path, "rb") as f:
+                        zip_bytes = f.read()
+
+            progress_bar.progress(100)
+            status_box.success("✅ 100% - SMS Report Lot2 processing completed.")
+
+            st.success("SMS Report Lot2 processed successfully.")
+
+            st.write("### Processing Summary")
+
+            for item in summary:
+                st.write(
+                    f"✅ {item['report_name']} | "
+                    f"Rows: {item['rows']}"
+                )
+
+            st.download_button(
+                "⬇️ Download SMS Report Lot2 Output ZIP",
+                data=zip_bytes,
+                file_name="SMS_Report_Lot2_Output.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
     if run_btn:
 
         required_files = {
