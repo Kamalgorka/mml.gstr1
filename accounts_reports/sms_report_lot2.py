@@ -27,14 +27,6 @@ def norm_col(col):
     return str(col).strip().lower().replace(" ", "").replace("_", "")
 
 
-def find_column(columns, required_col):
-    target = norm_col(required_col)
-    for col in columns:
-        if norm_col(col) == target:
-            return col
-    return None
-
-
 def standardize_columns(df):
     rename_map = {}
 
@@ -79,7 +71,11 @@ def build_writeoff_lookup(loan_os_file, loan_os_il_file):
 
     df = df[LOOKUP_COLUMNS].copy()
 
+    df["status"] = df["status"].astype(str).str.strip()
     df["cust_id"] = df["cust_id"].astype(str).str.strip()
+
+    # Keep only WriteOff cases
+    df = df[df["status"].str.lower().eq("writeoff")].copy()
 
     for col in [
         "od_days",
@@ -166,6 +162,10 @@ def process_sms_report_lot2(files, output_dir, progress_callback=None):
         output_dir,
         "Not Sent Write Off SMS Data Updated.csv"
     )
+    lookup_path = os.path.join(
+        output_dir,
+        "Loan OS Write Off Consolidated Lookup.csv"
+    )
 
     not_sent_sms_df.to_csv(
         not_sent_sms_path,
@@ -175,6 +175,12 @@ def process_sms_report_lot2(files, output_dir, progress_callback=None):
 
     enriched_writeoff_df.to_csv(
         not_sent_writeoff_path,
+        index=False,
+        encoding="utf-8-sig"
+    )
+
+    lookup_df.to_csv(
+        lookup_path,
         index=False,
         encoding="utf-8-sig"
     )
@@ -189,6 +195,10 @@ def process_sms_report_lot2(files, output_dir, progress_callback=None):
         zipf.write(
             not_sent_writeoff_path,
             arcname="Not Sent Write Off SMS Data Updated.csv"
+        )
+        zipf.write(
+            lookup_path,
+            arcname="Loan OS Write Off Consolidated Lookup.csv"
         )
 
     if progress_callback:
