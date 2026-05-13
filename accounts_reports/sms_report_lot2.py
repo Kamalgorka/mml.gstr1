@@ -110,7 +110,19 @@ def enrich_not_sent_writeoff_sms(not_sent_writeoff_file, lookup_df):
     if "cust_id" not in base_df.columns:
         raise ValueError("cust_id column not found in Not Sent Write Off SMS Data")
 
-    base_df["cust_id"] = base_df["cust_id"].astype(str).str.strip()
+    base_df["cust_id"] = (
+        base_df["cust_id"]
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\.0$", "", regex=True)
+    )
+
+    lookup_df["cust_id"] = (
+        lookup_df["cust_id"]
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\.0$", "", regex=True)
+    )
 
     for col in FILL_COLUMNS:
         if col not in base_df.columns:
@@ -119,7 +131,7 @@ def enrich_not_sent_writeoff_sms(not_sent_writeoff_file, lookup_df):
     merged = base_df.merge(
         lookup_df,
         on="cust_id",
-        how="left",
+        how="inner",
         suffixes=("", "_lookup")
     )
 
