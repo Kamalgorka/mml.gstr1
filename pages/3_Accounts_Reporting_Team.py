@@ -77,7 +77,8 @@ st.markdown(
 report_options = [
     "Select Report",
     "1) SMS Report",
-    "2) SMS Report Lot2"
+    "2) SMS Report Lot2",
+    "3) ARC and Write Off Entries"
 ]
 
 selected_report = st.selectbox(
@@ -210,7 +211,78 @@ elif selected_report == "2) SMS Report Lot2":
         use_container_width=True,
         key="run_sms_lot2"
     )
+elif selected_report == "3) ARC and Write Off Entries":
 
+    st.subheader("📘 ARC and Write Off Entries")
+
+    st.caption(
+        "Upload ARC / Write Off Excel file. System will prepare separate entry file for each sheet and one consolidated file."
+    )
+
+    arc_file = st.file_uploader(
+        "Upload ARC / Write Off Entries File",
+        type=["xlsx", "xls"],
+        key="arc_writeoff_file"
+    )
+
+    st.markdown("---")
+
+    run_btn = st.button(
+        "🚀 Run ARC and Write Off Entries",
+        use_container_width=True,
+        key="run_arc_writeoff"
+    )
+
+    if run_btn:
+
+        if arc_file is None:
+            st.error("Please upload ARC / Write Off file.")
+
+        else:
+
+            import tempfile
+            from accounts_reports.arc_writeoff_entries import process_arc_writeoff_entries
+
+            progress_bar = st.progress(0)
+            status_box = st.empty()
+
+            def update_progress(percent, message):
+                progress_bar.progress(percent)
+                status_box.write(f"⏳ {percent}% - {message}")
+
+            with st.spinner("Processing ARC and Write Off Entries..."):
+
+                with tempfile.TemporaryDirectory() as workdir:
+
+                    summary, zip_path = process_arc_writeoff_entries(
+                        uploaded_file=arc_file,
+                        output_dir=workdir,
+                        progress_callback=update_progress
+                    )
+
+                    with open(zip_path, "rb") as f:
+                        zip_bytes = f.read()
+
+            progress_bar.progress(100)
+            status_box.success("✅ 100% - ARC and Write Off Entries completed.")
+
+            st.success("ARC and Write Off Entries processed successfully.")
+
+            st.write("### Processing Summary")
+
+            for item in summary:
+                st.write(
+                    f"✅ {item['sheet_name']} | "
+                    f"Rows: {item['rows']}"
+                )
+
+            st.download_button(
+                "⬇️ Download ARC and Write Off Entries ZIP",
+                data=zip_bytes,
+                file_name="ARC_WriteOff_Entries_Output.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
     if run_btn:
 
         required_files = {
