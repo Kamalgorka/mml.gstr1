@@ -7,6 +7,9 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 
+W_OFF_POOL_SHEET_NAME = "ARCIL ARC (W-Off Pool)"
+
+
 def process_arc_writeoff_entries(uploaded_file, output_dir, progress_callback=None):
 
     if progress_callback:
@@ -65,7 +68,10 @@ def process_arc_writeoff_entries(uploaded_file, output_dir, progress_callback=No
         safe_sheet_name = clean_file_name(sheet_name)
         file_path = os.path.join(output_folder, f"{safe_sheet_name}_Entry.xlsx")
 
-        write_arc_entry_format(output_df, file_path, sheet_name)
+        if sheet_name.strip().upper() == W_OFF_POOL_SHEET_NAME.upper():
+            write_woff_pool_entry_format(output_df, file_path, sheet_name)
+        else:
+            write_arc_entry_format(output_df, file_path, sheet_name)
 
         consolidated_list.append(output_df)
 
@@ -169,6 +175,93 @@ def clean_file_name(name):
         name = name.replace(ch, "_")
 
     return name[:80]
+
+
+def write_woff_pool_entry_format(df, file_path, sheet_title):
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = str(sheet_title)[:31]
+
+    blue_fill = PatternFill("solid", fgColor="BFEAF5")
+    bold_font = Font(bold=True)
+    border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin")
+    )
+    center = Alignment(horizontal="center", vertical="center")
+
+    ws["A1"] = "B.Code"
+    ws["B1"] = "Recovery from Bad Debts Written-Off"
+    ws["C1"] = "OTS Amount"
+
+    for cell in ws[1]:
+        cell.font = bold_font
+        cell.fill = blue_fill
+        cell.alignment = center
+        cell.border = border
+
+    start_row = 2
+
+    if df.empty:
+        df = pd.DataFrame([{
+            "B.Code": "",
+            "Principal_JLG": 0,
+            "Principal_CPP": 0,
+            "Principal_IL": 0,
+            "Interest_JLG": 0,
+            "Interest_CPP": 0,
+            "Interest_IL": 0,
+            "OTS Amount": 0
+        }])
+
+    for idx, row in df.iterrows():
+
+        excel_row = start_row + idx
+
+        recovery_amount = (
+            row["Principal_JLG"]
+            + row["Principal_CPP"]
+            + row["Principal_IL"]
+            + row["Interest_JLG"]
+            + row["Interest_CPP"]
+            + row["Interest_IL"]
+        )
+
+        values = [
+            row["B.Code"],
+            recovery_amount,
+            row["OTS Amount"]
+        ]
+
+        for col_no, value in enumerate(values, start=1):
+            cell = ws.cell(row=excel_row, column=col_no)
+            cell.value = value
+            cell.alignment = center
+            cell.border = border
+
+    total_row = start_row + len(df)
+
+    ws.cell(row=total_row, column=1).value = "Grand Total"
+    ws.cell(row=total_row, column=2).value = f"=SUM(B{start_row}:B{total_row - 1})"
+    ws.cell(row=total_row, column=3).value = f"=SUM(C{start_row}:C{total_row - 1})"
+
+    for col in range(1, 4):
+        cell = ws.cell(row=total_row, column=col)
+        cell.font = bold_font
+        cell.fill = blue_fill
+        cell.alignment = center
+        cell.border = border
+
+    ws.column_dimensions["A"].width = 14
+    ws.column_dimensions["B"].width = 35
+    ws.column_dimensions["C"].width = 18
+
+    ws.freeze_panes = "A2"
+
+    wb.save(file_path)
 
 
 def write_arc_entry_format(df, file_path, sheet_title):
