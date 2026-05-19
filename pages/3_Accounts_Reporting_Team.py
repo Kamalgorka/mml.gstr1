@@ -351,32 +351,35 @@ elif selected_report == "3) ARC and Write Off Entries":
             )
     if run_btn:
 
-        required_files = {
-            "Monthly Outstanding SMS Data JLG HUB 1": hub1_file,
-            "Monthly Outstanding SMS Data JLG HUB 2": hub2_file,
-            "Monthly Outstanding SMS Data JLG HUB 3": hub3_file,
-            "Monthly Outstanding SMS Data JLG HUB 4": hub4_file,
-            "Monthly Outstanding SMS Data JLG HUB 5": hub5_file,
-            "Monthly Outstanding SMS Data JLG HUB 6": hub6_file,
-            "Monthly Outstanding SMS Data IL": il_file,
-            "Loan OS Write Off": writeoff_file,
-            "Loan OS Write Off IL": writeoff_il_file,
-        }
+    st.warning("Run button clicked. Validation started...")
 
-        missing = [
-            name for name, file in required_files.items()
-            if file is None
-        ]
+    required_files = {
+        "Monthly Outstanding SMS Data JLG HUB 1": hub1_file,
+        "Monthly Outstanding SMS Data JLG HUB 2": hub2_file,
+        "Monthly Outstanding SMS Data JLG HUB 3": hub3_file,
+        "Monthly Outstanding SMS Data JLG HUB 4": hub4_file,
+        "Monthly Outstanding SMS Data JLG HUB 5": hub5_file,
+        "Monthly Outstanding SMS Data JLG HUB 6": hub6_file,
+        "Monthly Outstanding SMS Data IL": il_file,
+        "Loan OS Write Off": writeoff_file,
+        "Loan OS Write Off IL": writeoff_il_file,
+    }
 
-        if missing:
+    missing = [
+        name for name, file in required_files.items()
+        if file is None
+    ]
 
-            st.error("Please upload all required files.")
+    if missing:
 
-            for m in missing:
-                st.write(f"❌ {m}")
+        st.error("Please upload all required files.")
 
-        else:
+        for m in missing:
+            st.write(f"❌ {m}")
 
+    else:
+
+        try:
             import tempfile
             from accounts_reports.sms_report import process_sms_report
 
@@ -403,7 +406,7 @@ elif selected_report == "3) ARC and Write Off Entries":
             progress_bar.progress(100)
             status_box.success("✅ 100% - SMS Report processing completed.")
 
-            st.success("SMS Report processed successfully. 16 output files created.")
+            st.success("SMS Report processed successfully.")
 
             st.write("### Processing Summary")
 
@@ -413,16 +416,19 @@ elif selected_report == "3) ARC and Write Off Entries":
                     st.write(
                         f"✅ {item['report_name']} | "
                         f"Arrear Free: {item['arrear_free_rows']} rows | "
-                        f"Arrear: {item['arrear_rows']} rows"
+                        f"Arrear: {item['arrear_rows']} rows | "
+                        f"Arrear Free Discrepancies: {item['arrear_free_discrepancy_rows']} | "
+                        f"Arrear Discrepancies: {item['arrear_discrepancy_rows']}"
                     )
 
                 elif item.get("type") == "writeoff":
                     st.write(
                         f"✅ {item['report_name']} | "
                         f"WriteOff rows: {item['total_writeoff_rows_after_filter']} | "
-                        f"Unique Cust IDs: {item['unique_cust_id_rows']}"
+                        f"Unique Cust IDs: {item['unique_cust_id_rows']} | "
                         f"Discrepancies: {item['discrepancy_rows']}"
                     )
+
             st.download_button(
                 "⬇️ Download SMS Report Output ZIP",
                 data=zip_bytes,
@@ -430,4 +436,7 @@ elif selected_report == "3) ARC and Write Off Entries":
                 mime="application/zip",
                 use_container_width=True
             )
-        
+
+        except Exception as e:
+            st.error("Error occurred while processing SMS Report.")
+            st.exception(e)
