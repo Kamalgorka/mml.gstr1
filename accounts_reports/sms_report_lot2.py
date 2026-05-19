@@ -132,6 +132,113 @@ def add_discrepancy_column(df, check_total_arrear=False):
     return df
 
 
+def consolidate_arrear_free_into_arrear(arrear_free_df, arrear_df):
+    """
+    If same cust_id exists in both:
+    - Add Arrear Free amount values into Arrear same cust_id row
+    - max_od_days = max of Arrear / Arrear Free
+    - Remove matched cust_id rows from Arrear Free output
+    No extra output file is created.
+    """
+    if arrear_free_df.empty or arrear_df.empty:
+        return arrear_free_df, arrear_df
+
+    arrear_free_df = normalize_cust_id(arrear_free_df.copy())
+    arrear_df = normalize_cust_id(arrear_df.copy())
+
+    required_cols = [
+        "cust_id",
+        "max_od_days",
+        "total_arrear",
+        "outstanding_principal",
+        "outstanding_interest",
+        "total_outstanding",
+    ]
+
+    missing_free = [c for c in required_cols if c not in arrear_free_df.columns]
+    missing_arrear = [c for c in required_cols if c not in arrear_df.columns]
+
+    if missing_free:
+        raise ValueError(f"Missing columns in Arrear Free data: {missing_free}")
+
+    if missing_arrear:
+        raise ValueError(f"Missing columns in Arrear data: {missing_arrear}")
+
+    matched_ids = set(arrear_free_df["cust_id"]).intersection(
+        set(arrear_df["cust_id"])
+    )
+
+    if not matched_ids:
+        return arrear_free_df, arrear_df
+
+    numeric_cols = [
+        "max_od_days",
+        "total_arrear",
+        "outstanding_principal",
+        "outstanding_interest",
+        "total_outstanding",
+    ]
+
+    for col in numeric_cols:
+        arrear_free_df[col] = pd.to_numeric(arrear_free_df[col], errors="coerce").fillna(0)
+        arrear_df[col] = pd.to_numeric(arrear_df[col], errors="coerce").fillna(0)
+
+    free_matched = arrear_free_df[
+        arrear_free_df["cust_id"].isin(matched_ids)
+    ].copy()
+
+    free_grouped = (
+        free_matched
+        .groupby("cust_id", as_index=False)
+        .agg({
+            "max_od_days": "max",
+            "total_arrear": "sum",
+            "outstanding_principal": "sum",
+            "outstanding_interest": "sum",
+            "total_outstanding": "sum",
+        })
+    )
+
+    arrear_df = arrear_df.merge(
+        free_grouped,
+        on="cust_id",
+        how="left",
+        suffixes=("", "_free")
+    )
+
+    for col in [
+        "total_arrear",
+        "outstanding_principal",
+        "outstanding_interest",
+        "total_outstanding",
+    ]:
+        arrear_df[col] = arrear_df[col] + arrear_df[f"{col}_free"].fillna(0)
+        arrear_df.drop(columns=[f"{col}_free"], inplace=True)
+
+    arrear_df["max_od_days"] = arrear_df[
+        ["max_od_days", "max_od_days_free"]
+    ].max(axis=1)
+
+    arrear_df.drop(columns=["max_od_days_free"], inplace=True)
+
+    arrear_free_df = arrear_free_df[
+        ~arrear_free_df["cust_id"].isin(matched_ids)
+    ].copy()
+
+    # Recalculate discrepancies after consolidation
+    arrear_free_df = add_discrepancy_column(
+        arrear_free_df,
+        check_total_arrear=False
+    )
+
+    arrear_df = add_discrepancy_column(
+        arrear_df,
+        check_total_arrear=True
+    )
+
+    return arrear_free_df, arrear_df
+
+
 def build_writeoff_lookup(loan_os_file, loan_os_il_file):
     df1 = read_excel_clean(loan_os_file)
     df2 = read_excel_clean(loan_os_il_file)
@@ -215,6 +322,7 @@ def enrich_not_sent_writeoff_sms(not_sent_writeoff_file, lookup_df):
 
 def process_not_sent_sms_data(not_sent_sms_file):
     df = read_excel_clean(not_sent_sms_file)
+    df = normalize_cust_id(df)
 
     if "status" not in df.columns:
         raise ValueError("status column not found in Not Sent SMS Data")
@@ -240,6 +348,11 @@ def process_not_sent_sms_data(not_sent_sms_file):
     arrear_df = add_discrepancy_column(
         arrear_df,
         check_total_arrear=True
+    )
+
+    arrear_free_df, arrear_df = consolidate_arrear_free_into_arrear(
+        arrear_free_df,
+        arrear_df
     )
 
     return arrear_free_df, arrear_df, len(df)
