@@ -45,6 +45,15 @@ def find_column(columns, required_col):
     return None
 
 
+def normalize_cust_id_series(series):
+    return (
+        series
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\.0$", "", regex=True)
+    )
+
+
 def get_actual_columns(columns, required_cols, report_name):
     actual_cols = []
 
@@ -170,7 +179,125 @@ def add_sms_discrepancy_fast(df, check_total_arrear=False):
     return df
 
 
-def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir):
+def consolidate_jlg_into_il(il_df, jlg_df_list):
+    """
+    If same cust_id exists in IL and JLG files:
+    - Add JLG amount values into IL same cust_id row
+    - max_od_days = max of IL/JLG
+    - Remove matched cust_id from JLG outputs
+    No new consolidated file is created.
+    """
+    if il_df.empty or not jlg_df_list:
+        return il_df, jlg_df_list
+
+    cust_col = find_column(il_df.columns, "cust_id")
+    max_od_col = find_column(il_df.columns, "max_od_days")
+    total_arrear_col = find_column(il_df.columns, "total_arrear_sum")
+
+    if total_arrear_col is None:
+        total_arrear_col = find_column(il_df.columns, "total_arrear")
+
+    principal_col = find_column(il_df.columns, "outstanding_principal")
+    interest_col = find_column(il_df.columns, "outstanding_interest")
+    total_outstanding_col = find_column(il_df.columns, "total_outstanding")
+
+    required = [
+        cust_col,
+        max_od_col,
+        total_arrear_col,
+        principal_col,
+        interest_col,
+        total_outstanding_col,
+    ]
+
+    if any(c is None for c in required):
+        raise ValueError("Required consolidation columns missing in IL/JLG data")
+
+    il_df = il_df.copy()
+    il_df[cust_col] = normalize_cust_id_series(il_df[cust_col])
+
+    all_jlg = []
+
+    for idx, jlg_df in enumerate(jlg_df_list):
+        if jlg_df.empty:
+            continue
+
+        temp = jlg_df.copy()
+        temp[cust_col] = normalize_cust_id_series(temp[cust_col])
+        temp["_source_idx"] = idx
+        all_jlg.append(temp)
+
+    if not all_jlg:
+        return il_df, jlg_df_list
+
+    jlg_all = pd.concat(all_jlg, ignore_index=True)
+
+    matched_ids = set(il_df[cust_col]).intersection(set(jlg_all[cust_col]))
+
+    if not matched_ids:
+        return il_df, jlg_df_list
+
+    amount_cols = [
+        max_od_col,
+        total_arrear_col,
+        principal_col,
+        interest_col,
+        total_outstanding_col,
+    ]
+
+    for col in amount_cols:
+        il_df[col] = pd.to_numeric(il_df[col], errors="coerce").fillna(0)
+        jlg_all[col] = pd.to_numeric(jlg_all[col], errors="coerce").fillna(0)
+
+    jlg_matched = jlg_all[jlg_all[cust_col].isin(matched_ids)].copy()
+
+    jlg_grouped = (
+        jlg_matched
+        .groupby(cust_col, as_index=False)
+        .agg({
+            max_od_col: "max",
+            total_arrear_col: "sum",
+            principal_col: "sum",
+            interest_col: "sum",
+            total_outstanding_col: "sum",
+        })
+    )
+
+    il_df = il_df.merge(
+        jlg_grouped,
+        on=cust_col,
+        how="left",
+        suffixes=("", "_jlg")
+    )
+
+    for col in [
+        total_arrear_col,
+        principal_col,
+        interest_col,
+        total_outstanding_col,
+    ]:
+        il_df[col] = il_df[col] + il_df[f"{col}_jlg"].fillna(0)
+        il_df.drop(columns=[f"{col}_jlg"], inplace=True)
+
+    il_df[max_od_col] = il_df[[max_od_col, f"{max_od_col}_jlg"]].max(axis=1)
+    il_df.drop(columns=[f"{max_od_col}_jlg"], inplace=True)
+
+    updated_jlg_list = []
+
+    for jlg_df in jlg_df_list:
+        if jlg_df.empty:
+            updated_jlg_list.append(jlg_df)
+            continue
+
+        updated_df = jlg_df.copy()
+        updated_df[cust_col] = normalize_cust_id_series(updated_df[cust_col])
+        updated_df = updated_df[~updated_df[cust_col].isin(matched_ids)].copy()
+        updated_jlg_list.append(updated_df)
+
+    return il_df, updated_jlg_list
+
+
+def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir, save_output=True):
     uploaded_file.seek(0)
 
     header_df = pd.read_excel(uploaded_file, nrows=0)
@@ -203,6 +330,10 @@ def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir)
     status_col = find_column(df.columns, "status")
     od_col = find_column(df.columns, od_column_name)
 
+    cust_col = find_column(df.columns, "cust_id")
+    if cust_col is not None:
+        df[cust_col] = normalize_cust_id_series(df[cust_col])
+
     df = df[
         ~df[status_col]
         .astype(str)
@@ -216,37 +347,35 @@ def process_monthly_file(uploaded_file, report_name, od_column_name, output_dir)
     arrear_free_df = df[df[od_col] == 0].copy()
     arrear_df = df[df[od_col] > 0].copy()
 
-    # Arrear Free validations
     arrear_free_df = add_sms_discrepancy_fast(
         arrear_free_df,
         check_total_arrear=False
     )
 
-    # Arrear validations
     arrear_df = add_sms_discrepancy_fast(
         arrear_df,
         check_total_arrear=True
     )
 
-    safe_name = clean_file_name(report_name)
+    if save_output:
+        safe_name = clean_file_name(report_name)
 
-    arrear_free_path = os.path.join(output_dir, f"Arrear Free {safe_name}.csv")
-    arrear_path = os.path.join(output_dir, f"Arrear {safe_name}.csv")
+        arrear_free_path = os.path.join(output_dir, f"Arrear Free {safe_name}.csv")
+        arrear_path = os.path.join(output_dir, f"Arrear {safe_name}.csv")
 
-    arrear_free_df.to_csv(arrear_free_path, index=False, encoding="utf-8-sig")
-    arrear_df.to_csv(arrear_path, index=False, encoding="utf-8-sig")
-
-    arrear_free_discrepancy_count = int((arrear_free_df["Discrepancy"] != "").sum())
-    arrear_discrepancy_count = int((arrear_df["Discrepancy"] != "").sum())
+        arrear_free_df.to_csv(arrear_free_path, index=False, encoding="utf-8-sig")
+        arrear_df.to_csv(arrear_path, index=False, encoding="utf-8-sig")
 
     return {
-        "report_name": safe_name,
+        "report_name": clean_file_name(report_name),
         "type": "monthly",
         "arrear_free_rows": len(arrear_free_df),
         "arrear_rows": len(arrear_df),
-        "arrear_free_discrepancy_rows": arrear_free_discrepancy_count,
-        "arrear_discrepancy_rows": arrear_discrepancy_count,
+        "arrear_free_discrepancy_rows": int((arrear_free_df["Discrepancy"] != "").sum()),
+        "arrear_discrepancy_rows": int((arrear_df["Discrepancy"] != "").sum()),
         "total_rows_after_death_removed": len(df),
+        "arrear_free_df": arrear_free_df,
+        "arrear_df": arrear_df,
     }
 
 
@@ -415,6 +544,7 @@ def process_sms_report(files, output_dir, progress_callback=None):
     summary = []
     total_steps = len(monthly_report_config) + 2
     current_step = 0
+    monthly_results = {}
 
     for report_name, cfg in monthly_report_config.items():
         current_step += 1
@@ -430,15 +560,81 @@ def process_sms_report(files, output_dir, progress_callback=None):
             report_name=report_name,
             od_column_name=cfg["od_col"],
             output_dir=output_dir,
+            save_output=False
         )
 
-        summary.append(result)
+        monthly_results[report_name] = result
 
         if progress_callback:
             progress_callback(
                 int((current_step / total_steps) * 90),
                 f"Completed {current_step}/{total_steps}: {report_name}"
             )
+
+    jlg_report_names = [
+        "Monthly Outstanding SMS Data JLG HUB 1",
+        "Monthly Outstanding SMS Data JLG HUB 2",
+        "Monthly Outstanding SMS Data JLG HUB 3",
+        "Monthly Outstanding SMS Data JLG HUB 4",
+        "Monthly Outstanding SMS Data JLG HUB 5",
+        "Monthly Outstanding SMS Data JLG HUB 6",
+    ]
+
+    il_report_name = "Monthly Outstanding SMS Data IL"
+
+    il_free_df = monthly_results[il_report_name]["arrear_free_df"]
+    jlg_free_dfs = [monthly_results[name]["arrear_free_df"] for name in jlg_report_names]
+
+    il_free_df, jlg_free_dfs = consolidate_jlg_into_il(
+        il_free_df,
+        jlg_free_dfs
+    )
+
+    monthly_results[il_report_name]["arrear_free_df"] = il_free_df
+
+    for name, updated_df in zip(jlg_report_names, jlg_free_dfs):
+        monthly_results[name]["arrear_free_df"] = updated_df
+
+    il_arrear_df = monthly_results[il_report_name]["arrear_df"]
+    jlg_arrear_dfs = [monthly_results[name]["arrear_df"] for name in jlg_report_names]
+
+    il_arrear_df, jlg_arrear_dfs = consolidate_jlg_into_il(
+        il_arrear_df,
+        jlg_arrear_dfs
+    )
+
+    monthly_results[il_report_name]["arrear_df"] = il_arrear_df
+
+    for name, updated_df in zip(jlg_report_names, jlg_arrear_dfs):
+        monthly_results[name]["arrear_df"] = updated_df
+
+    for report_name, result in monthly_results.items():
+        safe_name = clean_file_name(report_name)
+
+        arrear_free_df = result["arrear_free_df"]
+        arrear_df = result["arrear_df"]
+
+        arrear_free_df.to_csv(
+            os.path.join(output_dir, f"Arrear Free {safe_name}.csv"),
+            index=False,
+            encoding="utf-8-sig"
+        )
+
+        arrear_df.to_csv(
+            os.path.join(output_dir, f"Arrear {safe_name}.csv"),
+            index=False,
+            encoding="utf-8-sig"
+        )
+
+        summary.append({
+            "report_name": safe_name,
+            "type": "monthly",
+            "arrear_free_rows": len(arrear_free_df),
+            "arrear_rows": len(arrear_df),
+            "arrear_free_discrepancy_rows": int((arrear_free_df["Discrepancy"] != "").sum()),
+            "arrear_discrepancy_rows": int((arrear_df["Discrepancy"] != "").sum()),
+            "total_rows_after_death_removed": result["total_rows_after_death_removed"],
+        })
 
     current_step += 1
 
