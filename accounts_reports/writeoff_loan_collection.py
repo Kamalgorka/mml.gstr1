@@ -18,7 +18,9 @@ def norm_col(v):
 
 
 def to_number(v):
-    if pd.isna(v) or v in ["", "-"]:
+    if pd.isna(v):
+        return 0
+    if str(v).strip() in ["", "-"]:
         return 0
     try:
         return float(str(v).replace(",", "").strip())
@@ -41,7 +43,8 @@ def next_month(month):
 
 
 def prepare_repayment_summary(repayment_file):
-    df = pd.read_excel(repayment_file, engine=get_engine(repayment_file))
+    df = pd.read_excel(repayment_file, engine=get_engine(repayment_file), dtype=object)
+    df = df.astype(object)
 
     rename = {}
     for col in df.columns:
@@ -90,6 +93,7 @@ def find_previous_closing_col(df, header_row):
     for c in range(len(df.columns)):
         val = str(df.iat[header_row, c]).strip()
         m = re.match(r"Closing\s+([A-Za-z]{3,})", val, re.IGNORECASE)
+
         if m:
             month = m.group(1)[:3].title()
             if month in MONTH_ORDER:
@@ -117,19 +121,18 @@ def trim_actual_rows(df, loan_col, header_row):
         if blank_count >= 200 and last > header_row:
             break
 
-    return df.iloc[:last + 1].copy()
+    return df.iloc[:last + 1].copy().astype(object)
 
 
 def process_sheet(input_file, sheet_name, repayment_lookup):
     df = pd.read_excel(
-    input_file,
-    sheet_name=sheet_name,
-    header=None,
-    engine="openpyxl",
-    dtype=object
-)
-
-df = df.astype(object)
+        input_file,
+        sheet_name=sheet_name,
+        header=None,
+        engine="openpyxl",
+        dtype=object
+    )
+    df = df.astype(object)
 
     header_row, loan_col = find_header_and_loan_col(df)
     previous_closing_col, previous_month = find_previous_closing_col(df, header_row)
@@ -142,6 +145,8 @@ df = df.astype(object)
     while df.shape[1] < start_col + 4:
         df[df.shape[1]] = ""
 
+    df = df.astype(object)
+
     month_heading_row = header_row - 2
     total_row = header_row - 1
 
@@ -151,7 +156,10 @@ df = df.astype(object)
     df.iat[header_row, start_col + 2] = f"W.A {current_month}"
     df.iat[header_row, start_col + 3] = f"Closing {current_month}"
 
-    total_pa = total_ia = total_wa = total_closing = 0
+    total_pa = 0
+    total_ia = 0
+    total_wa = 0
+    total_closing = 0
 
     for r in range(header_row + 1, len(df)):
         loan_id = df.iat[r, loan_col]
@@ -253,8 +261,7 @@ def process_writeoff_loan_collection(writeoff_file, repayment_file, output_dir=N
         progress_callback(80, "Creating optimized output workbook...")
 
     wb = Workbook()
-    default_sheet = wb.active
-    wb.remove(default_sheet)
+    wb.remove(wb.active)
 
     write_df_to_sheet(wb, "System Write-Off", system_df, system_header, system_month_row, system_start_col)
     write_df_to_sheet(wb, "Manual Write-Off", manual_df, manual_header, manual_month_row, manual_start_col)
