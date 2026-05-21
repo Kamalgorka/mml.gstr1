@@ -74,7 +74,7 @@ def find_last_month_block(ws, header_row):
 
         match = re.match(r"Closing\s+([A-Za-z]{3,})", val, re.IGNORECASE)
         if match:
-            month_name = match.group(1).[:3].title()
+            month_name = match.group(1)[:3].title()
             if month_name in MONTH_ORDER:
                 month_cols.append((col, month_name))
 
