@@ -155,7 +155,7 @@ def process_sheet(input_file, sheet_name, repayment_lookup):
     current_month = next_month(previous_month)
 
     # Output will contain only A:J from original sheet
-    output_df = full_df.iloc[:, :BASE_OUTPUT_COLS].copy()
+    output_df = full_df.iloc[:, :BASE_OUTPUT_COLS].copy().astype(object)
 
     pa_col = BASE_OUTPUT_COLS
     ia_col = BASE_OUTPUT_COLS + 1
@@ -163,7 +163,9 @@ def process_sheet(input_file, sheet_name, repayment_lookup):
     closing_col = BASE_OUTPUT_COLS + 3
 
     for col in [pa_col, ia_col, wa_col, closing_col]:
-        output_df[col] = ""
+        output_df[col] = pd.Series([""] * len(output_df), dtype=object)
+
+    output_df = output_df.astype(object)
 
     month_heading_row = header_row - 2
     total_row = header_row - 1
