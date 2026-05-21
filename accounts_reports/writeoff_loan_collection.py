@@ -175,11 +175,9 @@ def update_sheet(ws, repayment_lookup):
     header_row, loan_col = find_header_row_and_loan_col(ws)
 
     previous_closing_col, previous_month = find_previous_closing_col(ws, header_row)
-
     current_month = next_month_name(previous_month)
 
     start_col = previous_closing_col + 1
-
     month_heading_row = header_row - 2
     total_row = header_row - 1
 
@@ -190,37 +188,15 @@ def update_sheet(ws, repayment_lookup):
         f"Closing {current_month}",
     ]
 
-    # Remove old merged range if target area already merged
-    for merged_range in list(ws.merged_cells.ranges):
-        if (
-            merged_range.min_row == month_heading_row
-            and merged_range.min_col >= start_col
-            and merged_range.min_col <= start_col + 3
-        ):
-            ws.unmerge_cells(str(merged_range))
-
-    # Month heading
     ws.cell(month_heading_row, start_col).value = f"{current_month}-{datetime.now().strftime('%y')}"
-    ws.merge_cells(
-        start_row=month_heading_row,
-        start_column=start_col,
-        end_row=month_heading_row,
-        end_column=start_col + 3,
-    )
-
     ws.cell(month_heading_row, start_col).font = Font(bold=True)
-    ws.cell(month_heading_row, start_col).alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
+    ws.cell(month_heading_row, start_col).alignment = Alignment(horizontal="center", vertical="center")
 
-    # Header row
     for i, header in enumerate(headers):
         cell = ws.cell(header_row, start_col + i)
         cell.value = header
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center")
-
         ws.column_dimensions[cell.column_letter].width = 14
 
     last_data_row = find_last_data_row(ws, loan_col, header_row)
@@ -230,7 +206,7 @@ def update_sheet(ws, repayment_lookup):
     total_wa = 0
     total_closing = 0
 
-    last_data_row = find_last_data_row(ws, loan_col, header_row)
+    for row in range(header_row + 1, last_data_row + 1):
         loan_id = ws.cell(row=row, column=loan_col).value
 
         if loan_id is None or str(loan_id).strip() == "":
@@ -285,7 +261,6 @@ def update_sheet(ws, repayment_lookup):
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     return current_month
-
 
 def process_writeoff_loan_collection(
     writeoff_file,
