@@ -259,7 +259,10 @@ def update_sheet(ws, repayment_lookup):
         cell.value = value
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center")
-
+        
+    # Remove extra blank formatted rows after actual Loan ID data
+    if ws.max_row > last_data_row + 5:
+        ws.delete_rows(last_data_row + 1, ws.max_row - last_data_row)
     return current_month
 
 def process_writeoff_loan_collection(
