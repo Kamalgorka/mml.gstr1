@@ -5,20 +5,13 @@ from datetime import datetime
 
 import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, Alignment
 
 
 MONTH_ORDER = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ]
-
-
-def clean_header(value):
-    if value is None:
-        return ""
-    return str(value).strip().replace("\n", " ").replace("\r", " ")
 
 
 def norm_col(value):
@@ -32,8 +25,15 @@ def norm_col(value):
     )
 
 
+def clean_value(value):
+    if value is None:
+        return ""
+
+    return str(value).strip()
+
+
 def to_number(value):
-    if value is None or value == "":
+    if value is None:
         return 0
 
     if isinstance(value, str):
@@ -56,55 +56,27 @@ def display_value(value):
     return int(value)
 
 
-def find_header_row_and_loan_col(ws):
-    for row in range(1, min(ws.max_row, 15) + 1):
-        for col in range(1, ws.max_column + 1):
-            val = clean_header(ws.cell(row=row, column=col).value)
-            if norm_col(val) == "loanid":
-                return row, col
-
-    raise Exception(f"Loan ID column not found in sheet: {ws.title}")
-
-
-def find_last_month_block(ws, header_row):
-    month_cols = []
-
-    for col in range(1, ws.max_column + 1):
-        val = clean_header(ws.cell(row=header_row, column=col).value)
-
-        match = re.match(r"Closing\s+([A-Za-z]{3,})", val, re.IGNORECASE)
-        if match:
-            month_name = match.group(1)[:3].title()
-            if month_name in MONTH_ORDER:
-                month_cols.append((col, month_name))
-
-    if not month_cols:
-        raise Exception(f"No Closing month column found in sheet: {ws.title}")
-
-    last_col, last_month = month_cols[-1]
-    return last_col, last_month
-
-
 def next_month_name(month_name):
     idx = MONTH_ORDER.index(month_name)
     return MONTH_ORDER[(idx + 1) % 12]
 
 
-def copy_style(src_cell, dst_cell):
-    if src_cell.has_style:
-        dst_cell._style = src_cell._style.copy()
+def get_excel_engine(file):
+    name = getattr(file, "name", str(file)).lower()
 
-    if src_cell.number_format:
-        dst_cell.number_format = src_cell.number_format
+    if name.endswith(".xlsb"):
+        return "pyxlsb"
 
-    if src_cell.alignment:
-        dst_cell.alignment = src_cell.alignment.copy()
+    return None
 
 
 def prepare_repayment_summary(repayment_file):
-    df = pd.read_excel(repayment_file, engine="pyxlsb" if str(repayment_file).lower().endswith(".xlsb") else None)
+    engine = get_excel_engine(repayment_file)
+
+    df = pd.read_excel(repayment_file, engine=engine)
 
     rename_map = {}
+
     for col in df.columns:
         n = norm_col(col)
 
@@ -119,14 +91,15 @@ def prepare_repayment_summary(repayment_file):
 
     df = df.rename(columns=rename_map)
 
-    required = [
+    required_cols = [
         "loan_id",
         "principal_collected",
         "interest_collected",
         "waiveoff_amt",
     ]
 
-    missing = [c for c in required if c not in df.columns]
+    missing = [c for c in required_cols if c not in df.columns]
+
     if missing:
         raise Exception(f"Missing columns in repayment file: {missing}")
 
@@ -147,13 +120,60 @@ def prepare_repayment_summary(repayment_file):
     return summary.set_index("loan_id").to_dict("index")
 
 
-def update_writeoff_sheet(ws, repayment_lookup):
+def find_header_row_and_loan_col(ws):
+    for row in range(1, 15):
+        for col in range(1, ws.max_column + 1):
+            value = clean_value(ws.cell(row=row, column=col).value)
+
+            if norm_col(value) == "loanid":
+                return row, col
+
+    raise Exception(f"Loan ID column not found in sheet: {ws.title}")
+
+
+def find_previous_closing_col(ws, header_row):
+    closing_cols = []
+
+    for col in range(1, ws.max_column + 1):
+        value = clean_value(ws.cell(row=header_row, column=col).value)
+
+        match = re.match(r"Closing\s+([A-Za-z]{3,})", value, re.IGNORECASE)
+
+        if match:
+            month = match.group(1)[:3].title()
+
+            if month in MONTH_ORDER:
+                closing_cols.append((col, month))
+
+    if not closing_cols:
+        raise Exception(f"No previous closing month column found in sheet: {ws.title}")
+
+    return closing_cols[-1]
+
+
+def find_last_data_row(ws, loan_col, header_row):
+    last_row = header_row
+
+    for row in range(header_row + 1, ws.max_row + 1):
+        value = ws.cell(row=row, column=loan_col).value
+
+        if value is not None and str(value).strip() != "":
+            last_row = row
+
+    return last_row
+
+
+def update_sheet(ws, repayment_lookup):
     header_row, loan_col = find_header_row_and_loan_col(ws)
 
-    previous_closing_col, previous_month = find_last_month_block(ws, header_row)
+    previous_closing_col, previous_month = find_previous_closing_col(ws, header_row)
+
     current_month = next_month_name(previous_month)
 
     start_col = previous_closing_col + 1
+
+    month_heading_row = header_row - 2
+    total_row = header_row - 1
 
     headers = [
         f"P.A {current_month}",
@@ -162,11 +182,17 @@ def update_writeoff_sheet(ws, repayment_lookup):
         f"Closing {current_month}",
     ]
 
-    # Month heading row
-    month_heading_row = header_row - 2 if header_row > 2 else 1
-    amount_row = header_row - 1 if header_row > 1 else header_row
+    # Remove old merged range if target area already merged
+    for merged_range in list(ws.merged_cells.ranges):
+        if (
+            merged_range.min_row == month_heading_row
+            and merged_range.min_col >= start_col
+            and merged_range.min_col <= start_col + 3
+        ):
+            ws.unmerge_cells(str(merged_range))
 
-    ws.cell(row=month_heading_row, column=start_col).value = current_month + "-" + datetime.now().strftime("%y")
+    # Month heading
+    ws.cell(month_heading_row, start_col).value = f"{current_month}-{datetime.now().strftime('%y')}"
     ws.merge_cells(
         start_row=month_heading_row,
         start_column=start_col,
@@ -174,31 +200,29 @@ def update_writeoff_sheet(ws, repayment_lookup):
         end_column=start_col + 3,
     )
 
-    month_cell = ws.cell(row=month_heading_row, column=start_col)
-    month_cell.font = Font(bold=True)
-    month_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.cell(month_heading_row, start_col).font = Font(bold=True)
+    ws.cell(month_heading_row, start_col).alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
-    # Column headers
+    # Header row
     for i, header in enumerate(headers):
-        cell = ws.cell(row=header_row, column=start_col + i)
+        cell = ws.cell(header_row, start_col + i)
         cell.value = header
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Copy width/style from previous month block
-        old_col = previous_closing_col - 3 + i
-        copy_style(ws.cell(row=header_row, column=old_col), cell)
-        ws.column_dimensions[get_column_letter(start_col + i)].width = ws.column_dimensions[
-            get_column_letter(old_col)
-        ].width
+        ws.column_dimensions[cell.column_letter].width = 14
 
-    # Fill data
+    last_data_row = find_last_data_row(ws, loan_col, header_row)
+
     total_pa = 0
     total_ia = 0
     total_wa = 0
     total_closing = 0
 
-    for row in range(header_row + 1, ws.max_row + 1):
+    for row in range(header_row + 1, last_data_row + 1):
         loan_id = ws.cell(row=row, column=loan_col).value
 
         if loan_id is None or str(loan_id).strip() == "":
@@ -212,7 +236,7 @@ def update_writeoff_sheet(ws, repayment_lookup):
                 "principal_collected": 0,
                 "interest_collected": 0,
                 "waiveoff_amt": 0,
-            },
+            }
         )
 
         pa = data["principal_collected"]
@@ -229,20 +253,16 @@ def update_writeoff_sheet(ws, repayment_lookup):
             display_value(closing),
         ]
 
-        for i, val in enumerate(values):
+        for i, value in enumerate(values):
             cell = ws.cell(row=row, column=start_col + i)
-            cell.value = val
+            cell.value = value
             cell.alignment = Alignment(horizontal="center", vertical="center")
-
-            old_col = previous_closing_col - 3 + i
-            copy_style(ws.cell(row=row, column=old_col), cell)
 
         total_pa += pa
         total_ia += ia
         total_wa += wa
         total_closing += closing
 
-    # Total row values
     totals = [
         display_value(total_pa),
         display_value(total_ia),
@@ -250,16 +270,21 @@ def update_writeoff_sheet(ws, repayment_lookup):
         display_value(total_closing),
     ]
 
-    for i, val in enumerate(totals):
-        cell = ws.cell(row=amount_row, column=start_col + i)
-        cell.value = val
+    for i, value in enumerate(totals):
+        cell = ws.cell(row=total_row, column=start_col + i)
+        cell.value = value
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     return current_month
 
 
-def process_writeoff_loan_collection(writeoff_file, repayment_file, output_dir=None, progress_callback=None):
+def process_writeoff_loan_collection(
+    writeoff_file,
+    repayment_file,
+    output_dir=None,
+    progress_callback=None
+):
     if progress_callback:
         progress_callback(10, "Reading repayment file...")
 
@@ -268,31 +293,39 @@ def process_writeoff_loan_collection(writeoff_file, repayment_file, output_dir=N
     if progress_callback:
         progress_callback(30, "Opening WriteOff loan collection file...")
 
-    wb = load_workbook(writeoff_file)
+    wb = load_workbook(
+        writeoff_file,
+        data_only=False,
+        keep_links=False
+    )
 
     required_sheets = ["System Write-Off", "Manual Write-Off"]
+
     missing_sheets = [s for s in required_sheets if s not in wb.sheetnames]
 
     if missing_sheets:
         raise Exception(f"Missing sheets in WriteOff file: {missing_sheets}")
 
     if progress_callback:
-        progress_callback(50, "Updating System Write-Off sheet...")
+        progress_callback(45, "Updating System Write-Off sheet...")
 
-    system_month = update_writeoff_sheet(wb["System Write-Off"], repayment_lookup)
+    system_month = update_sheet(wb["System Write-Off"], repayment_lookup)
 
     if progress_callback:
-        progress_callback(75, "Updating Manual Write-Off sheet...")
+        progress_callback(70, "Updating Manual Write-Off sheet...")
 
-    manual_month = update_writeoff_sheet(wb["Manual Write-Off"], repayment_lookup)
+    manual_month = update_sheet(wb["Manual Write-Off"], repayment_lookup)
 
     if output_dir is None:
         output_dir = tempfile.gettempdir()
 
     output_file = os.path.join(
         output_dir,
-        f"WriteOff_Loan_Collection_Updated_{system_month}.xlsx",
+        f"WriteOff_Loan_Collection_Updated_{system_month}.xlsx"
     )
+
+    if progress_callback:
+        progress_callback(90, "Saving updated workbook...")
 
     wb.save(output_file)
 
