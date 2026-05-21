@@ -4,13 +4,12 @@ import tempfile
 from datetime import datetime
 
 import pandas as pd
-from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment
-from openpyxl.utils import get_column_letter
 
 
-MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+MONTH_ORDER = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+]
 
 
 def norm_col(v):
@@ -20,8 +19,10 @@ def norm_col(v):
 def to_number(v):
     if pd.isna(v):
         return 0
+
     if str(v).strip() in ["", "-"]:
         return 0
+
     try:
         return float(str(v).replace(",", "").strip())
     except Exception:
@@ -35,7 +36,11 @@ def display_value(v):
 
 def get_engine(file):
     name = getattr(file, "name", str(file)).lower()
-    return "pyxlsb" if name.endswith(".xlsb") else None
+
+    if name.endswith(".xlsb"):
+        return "pyxlsb"
+
+    return None
 
 
 def next_month(month):
@@ -43,12 +48,19 @@ def next_month(month):
 
 
 def prepare_repayment_summary(repayment_file):
-    df = pd.read_excel(repayment_file, engine=get_engine(repayment_file), dtype=object)
+    df = pd.read_excel(
+        repayment_file,
+        engine=get_engine(repayment_file),
+        dtype=object
+    )
+
     df = df.astype(object)
 
     rename = {}
+
     for col in df.columns:
         n = norm_col(col)
+
         if n == "loanid":
             rename[col] = "loan_id"
         elif n == "principalcollected":
@@ -60,8 +72,15 @@ def prepare_repayment_summary(repayment_file):
 
     df = df.rename(columns=rename)
 
-    required = ["loan_id", "principal_collected", "interest_collected", "waiveoff_amt"]
+    required = [
+        "loan_id",
+        "principal_collected",
+        "interest_collected",
+        "waiveoff_amt",
+    ]
+
     missing = [c for c in required if c not in df.columns]
+
     if missing:
         raise Exception(f"Missing columns in repayment file: {missing}")
 
@@ -70,11 +89,14 @@ def prepare_repayment_summary(repayment_file):
     for c in ["principal_collected", "interest_collected", "waiveoff_amt"]:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    summary = df.groupby("loan_id", as_index=False).agg({
-        "principal_collected": "sum",
-        "interest_collected": "sum",
-        "waiveoff_amt": "sum",
-    })
+    summary = (
+        df.groupby("loan_id", as_index=False)
+        .agg(
+            principal_collected=("principal_collected", "sum"),
+            interest_collected=("interest_collected", "sum"),
+            waiveoff_amt=("waiveoff_amt", "sum"),
+        )
+    )
 
     return summary.set_index("loan_id").to_dict("index")
 
@@ -84,6 +106,7 @@ def find_header_and_loan_col(df):
         for c in range(len(df.columns)):
             if norm_col(df.iat[r, c]) == "loanid":
                 return r, c
+
     raise Exception("Loan ID column not found.")
 
 
@@ -92,10 +115,12 @@ def find_previous_closing_col(df, header_row):
 
     for c in range(len(df.columns)):
         val = str(df.iat[header_row, c]).strip()
-        m = re.match(r"Closing\s+([A-Za-z]{3,})", val, re.IGNORECASE)
 
-        if m:
-            month = m.group(1)[:3].title()
+        match = re.match(r"Closing\s+([A-Za-z]{3,})", val, re.IGNORECASE)
+
+        if match:
+            month = match.group(1)[:3].title()
+
             if month in MONTH_ORDER:
                 closing_cols.append((c, month))
 
@@ -132,6 +157,7 @@ def process_sheet(input_file, sheet_name, repayment_lookup):
         engine="openpyxl",
         dtype=object
     )
+
     df = df.astype(object)
 
     header_row, loan_col = find_header_and_loan_col(df)
@@ -169,11 +195,14 @@ def process_sheet(input_file, sheet_name, repayment_lookup):
 
         loan_id = str(loan_id).strip()
 
-        data = repayment_lookup.get(loan_id, {
-            "principal_collected": 0,
-            "interest_collected": 0,
-            "waiveoff_amt": 0,
-        })
+        data = repayment_lookup.get(
+            loan_id,
+            {
+                "principal_collected": 0,
+                "interest_collected": 0,
+                "waiveoff_amt": 0,
+            }
+        )
 
         pa = data["principal_collected"]
         ia = data["interest_collected"]
@@ -197,39 +226,26 @@ def process_sheet(input_file, sheet_name, repayment_lookup):
     df.iat[total_row, start_col + 2] = display_value(total_wa)
     df.iat[total_row, start_col + 3] = display_value(total_closing)
 
-    return df, current_month, header_row, month_heading_row, start_col
+    return df, current_month
 
 
-def write_df_to_sheet(wb, sheet_name, df, header_row, month_heading_row, start_col):
-    ws = wb.create_sheet(sheet_name)
+def write_df_to_sheet(writer, sheet_name, df):
+    df = df.fillna("-")
 
-    for r_idx, row in enumerate(df.itertuples(index=False), start=1):
-        for c_idx, value in enumerate(row, start=1):
-            if pd.isna(value):
-                value = "-"
-            cell = ws.cell(row=r_idx, column=c_idx, value=value)
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-
-            if r_idx in [month_heading_row + 1, header_row + 1, header_row]:
-                cell.font = Font(bold=True)
-
-    try:
-        ws.merge_cells(
-            start_row=month_heading_row + 1,
-            start_column=start_col + 1,
-            end_row=month_heading_row + 1,
-            end_column=start_col + 4
-        )
-    except Exception:
-        pass
-
-    for col in range(1, df.shape[1] + 1):
-        ws.column_dimensions[get_column_letter(col)].width = 14
-
-    ws.freeze_panes = ws.cell(row=header_row + 2, column=1)
+    df.to_excel(
+        writer,
+        sheet_name=sheet_name,
+        index=False,
+        header=False
+    )
 
 
-def process_writeoff_loan_collection(writeoff_file, repayment_file, output_dir=None, progress_callback=None):
+def process_writeoff_loan_collection(
+    writeoff_file,
+    repayment_file,
+    output_dir=None,
+    progress_callback=None
+):
     if progress_callback:
         progress_callback(10, "Reading repayment file...")
 
@@ -238,15 +254,19 @@ def process_writeoff_loan_collection(writeoff_file, repayment_file, output_dir=N
     if progress_callback:
         progress_callback(30, "Processing System Write-Off sheet...")
 
-    system_df, system_month, system_header, system_month_row, system_start_col = process_sheet(
-        writeoff_file, "System Write-Off", repayment_lookup
+    system_df, system_month = process_sheet(
+        writeoff_file,
+        "System Write-Off",
+        repayment_lookup
     )
 
     if progress_callback:
         progress_callback(60, "Processing Manual Write-Off sheet...")
 
-    manual_df, manual_month, manual_header, manual_month_row, manual_start_col = process_sheet(
-        writeoff_file, "Manual Write-Off", repayment_lookup
+    manual_df, manual_month = process_sheet(
+        writeoff_file,
+        "Manual Write-Off",
+        repayment_lookup
     )
 
     if output_dir is None:
@@ -260,16 +280,9 @@ def process_writeoff_loan_collection(writeoff_file, repayment_file, output_dir=N
     if progress_callback:
         progress_callback(80, "Creating optimized output workbook...")
 
-    wb = Workbook()
-    wb.remove(wb.active)
-
-    write_df_to_sheet(wb, "System Write-Off", system_df, system_header, system_month_row, system_start_col)
-    write_df_to_sheet(wb, "Manual Write-Off", manual_df, manual_header, manual_month_row, manual_start_col)
-
-    if progress_callback:
-        progress_callback(95, "Saving output file...")
-
-    wb.save(output_file)
+    with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
+        write_df_to_sheet(writer, "System Write-Off", system_df)
+        write_df_to_sheet(writer, "Manual Write-Off", manual_df)
 
     if progress_callback:
         progress_callback(100, "Report generated successfully.")
