@@ -493,7 +493,7 @@ elif selected_report == "4) WriteOff Loan Collection":
     with col2:
         repayment_file = st.file_uploader(
             "Repayment File",
-            type=["xlsx", "xls"],
+            type=["xlsx", "xls", "xlsb"],
             key="writeoff_collection_repayment_file"
         )
 
