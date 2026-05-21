@@ -153,12 +153,20 @@ def find_previous_closing_col(ws, header_row):
 
 def find_last_data_row(ws, loan_col, header_row):
     last_row = header_row
+    blank_count = 0
 
     for row in range(header_row + 1, ws.max_row + 1):
         value = ws.cell(row=row, column=loan_col).value
 
         if value is not None and str(value).strip() != "":
             last_row = row
+            blank_count = 0
+        else:
+            blank_count += 1
+
+        # Stop scanning after 200 continuous blank Loan ID rows
+        if blank_count >= 200 and last_row > header_row:
+            break
 
     return last_row
 
@@ -222,7 +230,7 @@ def update_sheet(ws, repayment_lookup):
     total_wa = 0
     total_closing = 0
 
-    for row in range(header_row + 1, last_data_row + 1):
+    last_data_row = find_last_data_row(ws, loan_col, header_row)
         loan_id = ws.cell(row=row, column=loan_col).value
 
         if loan_id is None or str(loan_id).strip() == "":
