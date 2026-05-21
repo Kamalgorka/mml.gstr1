@@ -102,7 +102,7 @@ def copy_style(src_cell, dst_cell):
 
 
 def prepare_repayment_summary(repayment_file):
-    df = pd.read_excel(repayment_file)
+    df = pd.read_excel(repayment_file, engine="pyxlsb" if str(repayment_file).lower().endswith(".xlsb") else None)
 
     rename_map = {}
     for col in df.columns:
