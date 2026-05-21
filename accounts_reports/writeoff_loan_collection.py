@@ -4,303 +4,234 @@ import tempfile
 from datetime import datetime
 
 import pandas as pd
-from openpyxl import load_workbook
+from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 
 
-MONTH_ORDER = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-]
+MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
-def norm_col(value):
-    return (
-        str(value)
-        .strip()
-        .lower()
-        .replace(" ", "")
-        .replace("_", "")
-        .replace(".", "")
-    )
+def norm_col(v):
+    return str(v).strip().lower().replace(" ", "").replace("_", "").replace(".", "")
 
 
-def clean_value(value):
-    if value is None:
-        return ""
-
-    return str(value).strip()
-
-
-def to_number(value):
-    if value is None:
+def to_number(v):
+    if pd.isna(v) or v in ["", "-"]:
         return 0
-
-    if isinstance(value, str):
-        value = value.replace(",", "").strip()
-        if value in ["", "-", "nan", "NaN"]:
-            return 0
-
     try:
-        return float(value)
+        return float(str(v).replace(",", "").strip())
     except Exception:
         return 0
 
 
-def display_value(value):
-    value = round(float(value), 0)
-
-    if value == 0:
-        return "-"
-
-    return int(value)
+def display_value(v):
+    v = round(float(v), 0)
+    return "-" if v == 0 else int(v)
 
 
-def next_month_name(month_name):
-    idx = MONTH_ORDER.index(month_name)
-    return MONTH_ORDER[(idx + 1) % 12]
-
-
-def get_excel_engine(file):
+def get_engine(file):
     name = getattr(file, "name", str(file)).lower()
+    return "pyxlsb" if name.endswith(".xlsb") else None
 
-    if name.endswith(".xlsb"):
-        return "pyxlsb"
 
-    return None
+def next_month(month):
+    return MONTH_ORDER[(MONTH_ORDER.index(month) + 1) % 12]
 
 
 def prepare_repayment_summary(repayment_file):
-    engine = get_excel_engine(repayment_file)
+    df = pd.read_excel(repayment_file, engine=get_engine(repayment_file))
 
-    df = pd.read_excel(repayment_file, engine=engine)
-
-    rename_map = {}
-
+    rename = {}
     for col in df.columns:
         n = norm_col(col)
-
         if n == "loanid":
-            rename_map[col] = "loan_id"
+            rename[col] = "loan_id"
         elif n == "principalcollected":
-            rename_map[col] = "principal_collected"
+            rename[col] = "principal_collected"
         elif n == "interestcollected":
-            rename_map[col] = "interest_collected"
+            rename[col] = "interest_collected"
         elif n in ["waiveoffamt", "waiveoffamount", "waiveoff"]:
-            rename_map[col] = "waiveoff_amt"
+            rename[col] = "waiveoff_amt"
 
-    df = df.rename(columns=rename_map)
+    df = df.rename(columns=rename)
 
-    required_cols = [
-        "loan_id",
-        "principal_collected",
-        "interest_collected",
-        "waiveoff_amt",
-    ]
-
-    missing = [c for c in required_cols if c not in df.columns]
-
+    required = ["loan_id", "principal_collected", "interest_collected", "waiveoff_amt"]
+    missing = [c for c in required if c not in df.columns]
     if missing:
         raise Exception(f"Missing columns in repayment file: {missing}")
 
     df["loan_id"] = df["loan_id"].astype(str).str.strip()
 
-    for col in ["principal_collected", "interest_collected", "waiveoff_amt"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    for c in ["principal_collected", "interest_collected", "waiveoff_amt"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    summary = (
-        df.groupby("loan_id", as_index=False)
-        .agg(
-            principal_collected=("principal_collected", "sum"),
-            interest_collected=("interest_collected", "sum"),
-            waiveoff_amt=("waiveoff_amt", "sum"),
-        )
-    )
+    summary = df.groupby("loan_id", as_index=False).agg({
+        "principal_collected": "sum",
+        "interest_collected": "sum",
+        "waiveoff_amt": "sum",
+    })
 
     return summary.set_index("loan_id").to_dict("index")
 
 
-def find_header_row_and_loan_col(ws):
-    for row in range(1, 15):
-        for col in range(1, ws.max_column + 1):
-            value = clean_value(ws.cell(row=row, column=col).value)
-
-            if norm_col(value) == "loanid":
-                return row, col
-
-    raise Exception(f"Loan ID column not found in sheet: {ws.title}")
+def find_header_and_loan_col(df):
+    for r in range(min(15, len(df))):
+        for c in range(len(df.columns)):
+            if norm_col(df.iat[r, c]) == "loanid":
+                return r, c
+    raise Exception("Loan ID column not found.")
 
 
-def find_previous_closing_col(ws, header_row):
+def find_previous_closing_col(df, header_row):
     closing_cols = []
 
-    for col in range(1, ws.max_column + 1):
-        value = clean_value(ws.cell(row=header_row, column=col).value)
-
-        match = re.match(r"Closing\s+([A-Za-z]{3,})", value, re.IGNORECASE)
-
-        if match:
-            month = match.group(1)[:3].title()
-
+    for c in range(len(df.columns)):
+        val = str(df.iat[header_row, c]).strip()
+        m = re.match(r"Closing\s+([A-Za-z]{3,})", val, re.IGNORECASE)
+        if m:
+            month = m.group(1)[:3].title()
             if month in MONTH_ORDER:
-                closing_cols.append((col, month))
+                closing_cols.append((c, month))
 
     if not closing_cols:
-        raise Exception(f"No previous closing month column found in sheet: {ws.title}")
+        raise Exception("Previous Closing month column not found.")
 
     return closing_cols[-1]
 
 
-def find_last_data_row(ws, loan_col, header_row):
-    last_row = header_row
+def trim_actual_rows(df, loan_col, header_row):
+    last = header_row
     blank_count = 0
 
-    for row in range(header_row + 1, ws.max_row + 1):
-        value = ws.cell(row=row, column=loan_col).value
+    for r in range(header_row + 1, len(df)):
+        val = df.iat[r, loan_col]
 
-        if value is not None and str(value).strip() != "":
-            last_row = row
+        if not pd.isna(val) and str(val).strip() != "":
+            last = r
             blank_count = 0
         else:
             blank_count += 1
 
-        # Stop scanning after 200 continuous blank Loan ID rows
-        if blank_count >= 200 and last_row > header_row:
+        if blank_count >= 200 and last > header_row:
             break
 
-    return last_row
+    return df.iloc[:last + 1].copy()
 
 
-def update_sheet(ws, repayment_lookup):
-    header_row, loan_col = find_header_row_and_loan_col(ws)
+def process_sheet(input_file, sheet_name, repayment_lookup):
+    df = pd.read_excel(input_file, sheet_name=sheet_name, header=None, engine="openpyxl")
 
-    previous_closing_col, previous_month = find_previous_closing_col(ws, header_row)
-    current_month = next_month_name(previous_month)
+    header_row, loan_col = find_header_and_loan_col(df)
+    previous_closing_col, previous_month = find_previous_closing_col(df, header_row)
 
+    df = trim_actual_rows(df, loan_col, header_row)
+
+    current_month = next_month(previous_month)
     start_col = previous_closing_col + 1
+
+    while df.shape[1] < start_col + 4:
+        df[df.shape[1]] = ""
+
     month_heading_row = header_row - 2
     total_row = header_row - 1
 
-    headers = [
-        f"P.A {current_month}",
-        f"I.A {current_month}",
-        f"W.A {current_month}",
-        f"Closing {current_month}",
-    ]
+    df.iat[month_heading_row, start_col] = f"{current_month}-{datetime.now().strftime('%y')}"
+    df.iat[header_row, start_col] = f"P.A {current_month}"
+    df.iat[header_row, start_col + 1] = f"I.A {current_month}"
+    df.iat[header_row, start_col + 2] = f"W.A {current_month}"
+    df.iat[header_row, start_col + 3] = f"Closing {current_month}"
 
-    ws.cell(month_heading_row, start_col).value = f"{current_month}-{datetime.now().strftime('%y')}"
-    ws.cell(month_heading_row, start_col).font = Font(bold=True)
-    ws.cell(month_heading_row, start_col).alignment = Alignment(horizontal="center", vertical="center")
+    total_pa = total_ia = total_wa = total_closing = 0
 
-    for i, header in enumerate(headers):
-        cell = ws.cell(header_row, start_col + i)
-        cell.value = header
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        ws.column_dimensions[cell.column_letter].width = 14
+    for r in range(header_row + 1, len(df)):
+        loan_id = df.iat[r, loan_col]
 
-    last_data_row = find_last_data_row(ws, loan_col, header_row)
-
-    total_pa = 0
-    total_ia = 0
-    total_wa = 0
-    total_closing = 0
-
-    for row in range(header_row + 1, last_data_row + 1):
-        loan_id = ws.cell(row=row, column=loan_col).value
-
-        if loan_id is None or str(loan_id).strip() == "":
+        if pd.isna(loan_id) or str(loan_id).strip() == "":
             continue
 
         loan_id = str(loan_id).strip()
 
-        data = repayment_lookup.get(
-            loan_id,
-            {
-                "principal_collected": 0,
-                "interest_collected": 0,
-                "waiveoff_amt": 0,
-            }
-        )
+        data = repayment_lookup.get(loan_id, {
+            "principal_collected": 0,
+            "interest_collected": 0,
+            "waiveoff_amt": 0,
+        })
 
         pa = data["principal_collected"]
         ia = data["interest_collected"]
         wa = data["waiveoff_amt"]
 
-        previous_closing = to_number(ws.cell(row=row, column=previous_closing_col).value)
+        previous_closing = to_number(df.iat[r, previous_closing_col])
         closing = previous_closing - pa
 
-        values = [
-            display_value(pa),
-            display_value(ia),
-            display_value(wa),
-            display_value(closing),
-        ]
-
-        for i, value in enumerate(values):
-            cell = ws.cell(row=row, column=start_col + i)
-            cell.value = value
-            cell.alignment = Alignment(horizontal="center", vertical="center")
+        df.iat[r, start_col] = display_value(pa)
+        df.iat[r, start_col + 1] = display_value(ia)
+        df.iat[r, start_col + 2] = display_value(wa)
+        df.iat[r, start_col + 3] = display_value(closing)
 
         total_pa += pa
         total_ia += ia
         total_wa += wa
         total_closing += closing
 
-    totals = [
-        display_value(total_pa),
-        display_value(total_ia),
-        display_value(total_wa),
-        display_value(total_closing),
-    ]
+    df.iat[total_row, start_col] = display_value(total_pa)
+    df.iat[total_row, start_col + 1] = display_value(total_ia)
+    df.iat[total_row, start_col + 2] = display_value(total_wa)
+    df.iat[total_row, start_col + 3] = display_value(total_closing)
 
-    for i, value in enumerate(totals):
-        cell = ws.cell(row=total_row, column=start_col + i)
-        cell.value = value
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        
-    # Remove extra blank formatted rows after actual Loan ID data
-    if ws.max_row > last_data_row + 5:
-        ws.delete_rows(last_data_row + 1, ws.max_row - last_data_row)
-    return current_month
+    return df, current_month, header_row, month_heading_row, start_col
 
-def process_writeoff_loan_collection(
-    writeoff_file,
-    repayment_file,
-    output_dir=None,
-    progress_callback=None
-):
+
+def write_df_to_sheet(wb, sheet_name, df, header_row, month_heading_row, start_col):
+    ws = wb.create_sheet(sheet_name)
+
+    for r_idx, row in enumerate(df.itertuples(index=False), start=1):
+        for c_idx, value in enumerate(row, start=1):
+            if pd.isna(value):
+                value = "-"
+            cell = ws.cell(row=r_idx, column=c_idx, value=value)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+            if r_idx in [month_heading_row + 1, header_row + 1, header_row]:
+                cell.font = Font(bold=True)
+
+    try:
+        ws.merge_cells(
+            start_row=month_heading_row + 1,
+            start_column=start_col + 1,
+            end_row=month_heading_row + 1,
+            end_column=start_col + 4
+        )
+    except Exception:
+        pass
+
+    for col in range(1, df.shape[1] + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 14
+
+    ws.freeze_panes = ws.cell(row=header_row + 2, column=1)
+
+
+def process_writeoff_loan_collection(writeoff_file, repayment_file, output_dir=None, progress_callback=None):
     if progress_callback:
         progress_callback(10, "Reading repayment file...")
 
     repayment_lookup = prepare_repayment_summary(repayment_file)
 
     if progress_callback:
-        progress_callback(30, "Opening WriteOff loan collection file...")
+        progress_callback(30, "Processing System Write-Off sheet...")
 
-    wb = load_workbook(
-        writeoff_file,
-        data_only=False,
-        keep_links=False
+    system_df, system_month, system_header, system_month_row, system_start_col = process_sheet(
+        writeoff_file, "System Write-Off", repayment_lookup
     )
 
-    required_sheets = ["System Write-Off", "Manual Write-Off"]
-
-    missing_sheets = [s for s in required_sheets if s not in wb.sheetnames]
-
-    if missing_sheets:
-        raise Exception(f"Missing sheets in WriteOff file: {missing_sheets}")
-
     if progress_callback:
-        progress_callback(45, "Updating System Write-Off sheet...")
+        progress_callback(60, "Processing Manual Write-Off sheet...")
 
-    system_month = update_sheet(wb["System Write-Off"], repayment_lookup)
-
-    if progress_callback:
-        progress_callback(70, "Updating Manual Write-Off sheet...")
-
-    manual_month = update_sheet(wb["Manual Write-Off"], repayment_lookup)
+    manual_df, manual_month, manual_header, manual_month_row, manual_start_col = process_sheet(
+        writeoff_file, "Manual Write-Off", repayment_lookup
+    )
 
     if output_dir is None:
         output_dir = tempfile.gettempdir()
@@ -311,7 +242,17 @@ def process_writeoff_loan_collection(
     )
 
     if progress_callback:
-        progress_callback(90, "Saving updated workbook...")
+        progress_callback(80, "Creating optimized output workbook...")
+
+    wb = Workbook()
+    default_sheet = wb.active
+    wb.remove(default_sheet)
+
+    write_df_to_sheet(wb, "System Write-Off", system_df, system_header, system_month_row, system_start_col)
+    write_df_to_sheet(wb, "Manual Write-Off", manual_df, manual_header, manual_month_row, manual_start_col)
+
+    if progress_callback:
+        progress_callback(95, "Saving output file...")
 
     wb.save(output_file)
 
