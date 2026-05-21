@@ -121,7 +121,15 @@ def trim_actual_rows(df, loan_col, header_row):
 
 
 def process_sheet(input_file, sheet_name, repayment_lookup):
-    df = pd.read_excel(input_file, sheet_name=sheet_name, header=None, engine="openpyxl")
+    df = pd.read_excel(
+    input_file,
+    sheet_name=sheet_name,
+    header=None,
+    engine="openpyxl",
+    dtype=object
+)
+
+df = df.astype(object)
 
     header_row, loan_col = find_header_and_loan_col(df)
     previous_closing_col, previous_month = find_previous_closing_col(df, header_row)
