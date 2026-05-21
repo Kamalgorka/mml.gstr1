@@ -81,7 +81,8 @@ report_options = [
     "Select Report",
     "1) SMS Report",
     "2) SMS Report Lot2",
-    "3) ARC and Write Off Entries"
+    "3) ARC and Write Off Entries",
+    "4) WriteOff Loan Collection"
 ]
 
 selected_report = st.selectbox(
@@ -335,56 +336,61 @@ elif selected_report == "2) SMS Report Lot2":
 
         else:
 
-            import tempfile
-            from accounts_reports.sms_report_lot2 import process_sms_report_lot2
+            try:
+                import tempfile
+                from accounts_reports.sms_report_lot2 import process_sms_report_lot2
 
-            progress_bar = st.progress(0)
-            status_box = st.empty()
+                progress_bar = st.progress(0)
+                status_box = st.empty()
 
-            def update_progress(percent, message):
-                progress_bar.progress(percent)
-                status_box.write(f"⏳ {percent}% - {message}")
+                def update_progress(percent, message):
+                    progress_bar.progress(percent)
+                    status_box.write(f"⏳ {percent}% - {message}")
 
-            with st.spinner("Processing SMS Report Lot2..."):
+                with st.spinner("Processing SMS Report Lot2..."):
 
-                with tempfile.TemporaryDirectory() as workdir:
+                    with tempfile.TemporaryDirectory() as workdir:
 
-                    summary, zip_path = process_sms_report_lot2(
-                        files=required_files,
-                        output_dir=workdir,
-                        progress_callback=update_progress
-                    )
+                        summary, zip_path = process_sms_report_lot2(
+                            files=required_files,
+                            output_dir=workdir,
+                            progress_callback=update_progress
+                        )
 
-                    with open(zip_path, "rb") as f:
-                        zip_bytes = f.read()
+                        with open(zip_path, "rb") as f:
+                            zip_bytes = f.read()
 
-            progress_bar.progress(100)
-            status_box.success("✅ 100% - SMS Report Lot2 processing completed.")
+                progress_bar.progress(100)
+                status_box.success("✅ 100% - SMS Report Lot2 processing completed.")
 
-            st.success("SMS Report Lot2 processed successfully.")
+                st.success("SMS Report Lot2 processed successfully.")
 
-            st.write("### Processing Summary")
+                st.write("### Processing Summary")
 
-            for item in summary:
-                if "discrepancy_rows" in item:
-                    st.write(
-                        f"✅ {item['report_name']} | "
-                        f"Rows: {item['rows']} | "
-                        f"Discrepancies: {item['discrepancy_rows']}"
-                    )
-                else:
-                    st.write(
-                        f"✅ {item['report_name']} | "
-                        f"Rows: {item['rows']}"
-                    )
+                for item in summary:
+                    if "discrepancy_rows" in item:
+                        st.write(
+                            f"✅ {item['report_name']} | "
+                            f"Rows: {item['rows']} | "
+                            f"Discrepancies: {item['discrepancy_rows']}"
+                        )
+                    else:
+                        st.write(
+                            f"✅ {item['report_name']} | "
+                            f"Rows: {item['rows']}"
+                        )
 
-            st.download_button(
-                "⬇️ Download SMS Report Lot2 Output ZIP",
-                data=zip_bytes,
-                file_name="SMS_Report_Lot2_Output.zip",
-                mime="application/zip",
-                use_container_width=True
-            )
+                st.download_button(
+                    "⬇️ Download SMS Report Lot2 Output ZIP",
+                    data=zip_bytes,
+                    file_name="SMS_Report_Lot2_Output.zip",
+                    mime="application/zip",
+                    use_container_width=True
+                )
+
+            except Exception as e:
+                st.error("Error occurred while processing SMS Report Lot2.")
+                st.exception(e)
 
 
 elif selected_report == "3) ARC and Write Off Entries":
@@ -416,46 +422,149 @@ elif selected_report == "3) ARC and Write Off Entries":
 
         else:
 
-            import tempfile
-            from accounts_reports.arc_writeoff_entries import process_arc_writeoff_entries
+            try:
+                import tempfile
+                from accounts_reports.arc_writeoff_entries import process_arc_writeoff_entries
 
-            progress_bar = st.progress(0)
-            status_box = st.empty()
+                progress_bar = st.progress(0)
+                status_box = st.empty()
 
-            def update_progress(percent, message):
-                progress_bar.progress(percent)
-                status_box.write(f"⏳ {percent}% - {message}")
+                def update_progress(percent, message):
+                    progress_bar.progress(percent)
+                    status_box.write(f"⏳ {percent}% - {message}")
 
-            with st.spinner("Processing ARC and Write Off Entries..."):
+                with st.spinner("Processing ARC and Write Off Entries..."):
 
-                with tempfile.TemporaryDirectory() as workdir:
+                    with tempfile.TemporaryDirectory() as workdir:
 
-                    summary, zip_path = process_arc_writeoff_entries(
-                        uploaded_file=arc_file,
-                        output_dir=workdir,
-                        progress_callback=update_progress
+                        summary, zip_path = process_arc_writeoff_entries(
+                            uploaded_file=arc_file,
+                            output_dir=workdir,
+                            progress_callback=update_progress
+                        )
+
+                        with open(zip_path, "rb") as f:
+                            zip_bytes = f.read()
+
+                progress_bar.progress(100)
+                status_box.success("✅ 100% - ARC and Write Off Entries completed.")
+
+                st.success("ARC and Write Off Entries processed successfully.")
+
+                st.write("### Processing Summary")
+
+                for item in summary:
+                    st.write(
+                        f"✅ {item['sheet_name']} | "
+                        f"Rows: {item['rows']}"
                     )
 
-                    with open(zip_path, "rb") as f:
-                        zip_bytes = f.read()
-
-            progress_bar.progress(100)
-            status_box.success("✅ 100% - ARC and Write Off Entries completed.")
-
-            st.success("ARC and Write Off Entries processed successfully.")
-
-            st.write("### Processing Summary")
-
-            for item in summary:
-                st.write(
-                    f"✅ {item['sheet_name']} | "
-                    f"Rows: {item['rows']}"
+                st.download_button(
+                    "⬇️ Download ARC and Write Off Entries ZIP",
+                    data=zip_bytes,
+                    file_name="ARC_WriteOff_Entries_Output.zip",
+                    mime="application/zip",
+                    use_container_width=True
                 )
 
-            st.download_button(
-                "⬇️ Download ARC and Write Off Entries ZIP",
-                data=zip_bytes,
-                file_name="ARC_WriteOff_Entries_Output.zip",
-                mime="application/zip",
-                use_container_width=True
-            )
+            except Exception as e:
+                st.error("Error occurred while processing ARC and Write Off Entries.")
+                st.exception(e)
+
+
+elif selected_report == "4) WriteOff Loan Collection":
+
+    st.subheader("📘 WriteOff Loan Collection")
+
+    st.caption(
+        "Upload WriteOff Loan Collection file and Repayment file. "
+        "System will update System Write-Off and Manual Write-Off sheets month-wise."
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        writeoff_collection_file = st.file_uploader(
+            "WriteOff Loan Collection File",
+            type=["xlsx", "xls"],
+            key="writeoff_collection_file"
+        )
+
+    with col2:
+        repayment_file = st.file_uploader(
+            "Repayment File",
+            type=["xlsx", "xls"],
+            key="writeoff_collection_repayment_file"
+        )
+
+    st.markdown("---")
+
+    run_btn = st.button(
+        "🚀 Run WriteOff Loan Collection",
+        use_container_width=True,
+        key="run_writeoff_loan_collection"
+    )
+
+    if run_btn:
+
+        required_files = {
+            "WriteOff Loan Collection File": writeoff_collection_file,
+            "Repayment File": repayment_file,
+        }
+
+        missing = [
+            name for name, file in required_files.items()
+            if file is None
+        ]
+
+        if missing:
+
+            st.error("Please upload all required files.")
+
+            for m in missing:
+                st.write(f"❌ {m}")
+
+        else:
+
+            try:
+                import os
+                import tempfile
+                from accounts_reports.writeoff_loan_collection import process_writeoff_loan_collection
+
+                progress_bar = st.progress(0)
+                status_box = st.empty()
+
+                def update_progress(percent, message):
+                    progress_bar.progress(percent)
+                    status_box.write(f"⏳ {percent}% - {message}")
+
+                with st.spinner("Processing WriteOff Loan Collection..."):
+
+                    with tempfile.TemporaryDirectory() as workdir:
+
+                        output_file = process_writeoff_loan_collection(
+                            writeoff_file=writeoff_collection_file,
+                            repayment_file=repayment_file,
+                            output_dir=workdir,
+                            progress_callback=update_progress
+                        )
+
+                        with open(output_file, "rb") as f:
+                            output_bytes = f.read()
+
+                progress_bar.progress(100)
+                status_box.success("✅ 100% - WriteOff Loan Collection completed.")
+
+                st.success("WriteOff Loan Collection processed successfully.")
+
+                st.download_button(
+                    "⬇️ Download Updated WriteOff Loan Collection",
+                    data=output_bytes,
+                    file_name=os.path.basename(output_file),
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+
+            except Exception as e:
+                st.error("Error occurred while processing WriteOff Loan Collection.")
+                st.exception(e)
