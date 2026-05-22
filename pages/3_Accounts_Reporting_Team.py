@@ -571,67 +571,72 @@ elif selected_report == "4) WriteOff Loan Collection":
                 st.exception(e)
 
 elif selected_report == "5) OTS Data":
+    st.subheader("📘 OTS Data Report")
 
-    st.subheader("📘 OTS Data")
+    st.info("Upload all four required files to generate the OTS Data output.")
 
-    st.caption(
-        "Upload OTS Data file. System will process the file and generate output."
-    )
+    col1, col2 = st.columns(2)
 
-    ots_file = st.file_uploader(
-        "Upload OTS Data File",
-        type=["xlsx", "xls", "xlsb", "csv"],
-        key="ots_data_file"
-    )
+    with col1:
+        outstanding_il_file = st.file_uploader(
+            "Upload Outstanding IL",
+            type=["xlsx", "xls", "xlsb", "csv"],
+            key="ots_outstanding_il"
+        )
 
-    st.markdown("---")
+        writeoff_il_file = st.file_uploader(
+            "Upload Write Off IL",
+            type=["xlsx", "xls", "xlsb", "csv"],
+            key="ots_writeoff_il"
+        )
 
-    run_btn = st.button(
-        "🚀 Run OTS Data",
-        use_container_width=True,
-        key="run_ots_data"
-    )
+    with col2:
+        outstanding_jlg_file = st.file_uploader(
+            "Upload Outstanding JLG",
+            type=["xlsx", "xls", "xlsb", "csv"],
+            key="ots_outstanding_jlg"
+        )
 
-    if run_btn:
+        writeoff_jlg_file = st.file_uploader(
+            "Upload Write Off JLG",
+            type=["xlsx", "xls", "xlsb", "csv"],
+            key="ots_writeoff_jlg"
+        )
 
-        if ots_file is None:
-            st.error("Please upload OTS Data file.")
-
+    if st.button("Generate OTS Data Report", type="primary"):
+        if not all([
+            outstanding_il_file,
+            outstanding_jlg_file,
+            writeoff_il_file,
+            writeoff_jlg_file,
+        ]):
+            st.error("Please upload all four files before generating the report.")
         else:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            def update_progress(value, message):
+                progress_bar.progress(value)
+                status_text.info(message)
 
             try:
-                from accounts_reports.ots_data import process_ots_data
-
-                progress_bar = st.progress(0)
-                status_box = st.empty()
-
-                def update_progress(percent, message):
-                    progress_bar.progress(percent)
-                    status_box.write(f"⏳ {percent}% - {message}")
-
-                with st.spinner("Processing OTS Data..."):
-
-                    output_file = process_ots_data(
-                        uploaded_file=ots_file,
-                        progress_callback=update_progress
-                    )
-
-                    with open(output_file, "rb") as f:
-                        output_bytes = f.read()
-
-                progress_bar.progress(100)
-                status_box.success("✅ 100% - OTS Data completed.")
-
-                st.success("OTS Data processed successfully.")
-
-                st.download_button(
-                    "⬇️ Download OTS Data Output",
-                    data=output_bytes,
-                    file_name="OTS_Data_Output.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
+                output_path = process_ots_data(
+                    outstanding_il_file,
+                    outstanding_jlg_file,
+                    writeoff_il_file,
+                    writeoff_jlg_file,
+                    progress_callback=update_progress
                 )
 
+                with open(output_path, "rb") as f:
+                    st.success("OTS Data Report generated successfully.")
+
+                    st.download_button(
+                        label="⬇️ Download OTS Data Report",
+                        data=f,
+                        file_name="OTS_Data_Output.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+
             except Exception as e:
-                st.error("Error occurred while processing OTS Data.")
-                st.exception(e)
+                st.error(f"Error while generating OTS Data Report: {e}")
