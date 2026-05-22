@@ -42,30 +42,22 @@ COLUMN_MAP = {
     "Outstanding_Interest": ["outstanding_interest"],
 }
 
-ALLOWED_FUNDERS = {
+OUTSTANDING_ALLOWED_FUNDERS = {
     "ARCILARC_MARCH_2026",
-    "BUSINESSLOAN_AL_AP",
     "CFMARC_MARCH_2025",
+    "OWN",
     "PHOENIX_ARC",
     "PHOENIX_ARC-1",
+    "BUSINESSLOAN_AL_AP",
     "PIRAMAL_DA_AUSTIN_09",
     "PIRAMAL_DA_ORCHID_05_2024",
-    "OWN",
-    "NULL",
+    "OXYZO_FINANCIAL_DEBENTURES",
     "",
 }
 
 PIRAMAL_60_DPD_FUNDERS = {
     "PIRAMAL_DA_AUSTIN_09",
     "PIRAMAL_DA_ORCHID_05_2024",
-}
-
-ALLOWED_STATUS = {
-    "ACTIVE",
-    "WRITE OFF",
-    "WRITEOFF",
-    "WRITE-OFF",
-    "WRITE_OFF",
 }
 
 
@@ -76,6 +68,28 @@ def _progress(progress_callback, value, message):
 
 def _norm_col(col):
     return str(col).strip().lower().replace(" ", "").replace("_", "").replace(".", "")
+
+
+def _clean_text_series(series):
+    return series.fillna("").astype(str).str.strip()
+
+
+def _clean_numeric(series):
+    return pd.to_numeric(
+        series.fillna("").astype(str).str.replace(",", "", regex=False).str.strip(),
+        errors="coerce"
+    ).fillna(0)
+
+
+def _normalize_status(series):
+    return (
+        _clean_text_series(series)
+        .str.upper()
+        .str.replace("-", " ", regex=False)
+        .str.replace("_", " ", regex=False)
+        .str.replace("  ", " ", regex=False)
+        .str.strip()
+    )
 
 
 def _get_engine(filename):
@@ -111,10 +125,7 @@ def _combine_all_sheets(uploaded_file):
         df["Source_Sheet"] = sheet_name
         frames.append(df)
 
-    if not frames:
-        return pd.DataFrame()
-
-    return pd.concat(frames, ignore_index=True)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def _pick_column(df, possible_names):
@@ -143,60 +154,38 @@ def _standardize_to_final(df, source_name):
     return output
 
 
-def _clean_numeric(series):
-    return pd.to_numeric(
-        series.astype(str)
-        .str.replace(",", "", regex=False)
-        .str.strip(),
-        errors="coerce"
-    ).fillna(0)
+def _filter_outstanding_data(df):
+    # Status: Active / WriteOff allowed
+    status = _normalize_status(df["Status"])
+    df = df[status.isin(["ACTIVE", "WRITE OFF", "WRITEOFF"])].copy()
 
+    # Funder filter only for Outstanding IL/JLG
+    funder = _clean_text_series(df["Funder_Description"]).str.upper()
 
-def _clean_text(series):
-    return (
-        series.fillna("")
-        .astype(str)
-        .str.strip()
-    )
+    allowed_funder_mask = funder.isin(OUTSTANDING_ALLOWED_FUNDERS)
+    blank_mask = funder.eq("") | funder.isin(["NAN", "NONE", "NULL"])
 
+    df = df[allowed_funder_mask | blank_mask].copy()
 
-def _apply_common_filters(df):
-    # Status filter: only Active / Write Off / WriteOff
-    status = _clean_text(df["Status"]).str.upper()
-    status = status.str.replace("-", " ", regex=False).str.replace("_", " ", regex=False)
-    status = status.str.replace("  ", " ", regex=False).str.strip()
-
-    df = df[
-        status.isin(["ACTIVE", "WRITE OFF", "WRITEOFF"])
-    ].copy()
-
-    # Funder filter including Own, Null and blanks
-    funder = _clean_text(df["Funder_Description"]).str.upper()
-
-    blank_null_mask = (
-        funder.eq("")
-        | funder.isin(["NULL", "NAN", "NONE"])
-    )
-
-    allowed_funder_mask = funder.isin(ALLOWED_FUNDERS)
-
-    df = df[allowed_funder_mask | blank_null_mask].copy()
-
-    # PIRAMAL only > 60 DPD
-    funder_after = _clean_text(df["Funder_Description"]).str.upper()
+    # Piramal cases only > 60 DPD
+    funder_after = _clean_text_series(df["Funder_Description"]).str.upper()
     od_days = _clean_numeric(df["Od_Days"])
 
     piramal_mask = funder_after.isin(PIRAMAL_60_DPD_FUNDERS)
-
     df = df[(~piramal_mask) | (od_days > 60)].copy()
 
     return df
 
 
+def _filter_writeoff_data(df):
+    # WriteOff reports: no funder filter, only WriteOff status
+    status = _normalize_status(df["Status"])
+    return df[status.isin(["WRITE OFF", "WRITEOFF"])].copy()
+
+
 def _calculate_ots_amount(df):
     principal = _clean_numeric(df["Outstanding_Principal"])
     interest = _clean_numeric(df["Outstanding_Interest"])
-
     df["OTS Amount as on May 01"] = principal + interest
     return df
 
@@ -209,24 +198,32 @@ def process_ots_data(
     progress_callback=None
 ):
     _progress(progress_callback, 5, "Reading Outstanding IL file...")
-    outstanding_il = _combine_all_sheets(outstanding_il_file)
-    outstanding_il = _standardize_to_final(outstanding_il, "Outstanding IL")
-    outstanding_il = _apply_common_filters(outstanding_il)
+    outstanding_il = _standardize_to_final(
+        _combine_all_sheets(outstanding_il_file),
+        "Outstanding IL"
+    )
+    outstanding_il = _filter_outstanding_data(outstanding_il)
 
     _progress(progress_callback, 25, "Reading Outstanding JLG file...")
-    outstanding_jlg = _combine_all_sheets(outstanding_jlg_file)
-    outstanding_jlg = _standardize_to_final(outstanding_jlg, "Outstanding JLG")
-    outstanding_jlg = _apply_common_filters(outstanding_jlg)
+    outstanding_jlg = _standardize_to_final(
+        _combine_all_sheets(outstanding_jlg_file),
+        "Outstanding JLG"
+    )
+    outstanding_jlg = _filter_outstanding_data(outstanding_jlg)
 
     _progress(progress_callback, 45, "Reading Write Off IL file...")
-    writeoff_il = _combine_all_sheets(writeoff_il_file)
-    writeoff_il = _standardize_to_final(writeoff_il, "Write Off IL")
-    writeoff_il = _apply_common_filters(writeoff_il)
+    writeoff_il = _standardize_to_final(
+        _combine_all_sheets(writeoff_il_file),
+        "Write Off IL"
+    )
+    writeoff_il = _filter_writeoff_data(writeoff_il)
 
     _progress(progress_callback, 60, "Reading Write Off JLG file...")
-    writeoff_jlg = _combine_all_sheets(writeoff_jlg_file)
-    writeoff_jlg = _standardize_to_final(writeoff_jlg, "Write Off JLG")
-    writeoff_jlg = _apply_common_filters(writeoff_jlg)
+    writeoff_jlg = _standardize_to_final(
+        _combine_all_sheets(writeoff_jlg_file),
+        "Write Off JLG"
+    )
+    writeoff_jlg = _filter_writeoff_data(writeoff_jlg)
 
     _progress(progress_callback, 75, "Combining final OTS data...")
 
@@ -236,7 +233,6 @@ def process_ots_data(
     )
 
     final_df = _calculate_ots_amount(final_df)
-
     final_df = final_df[["Source_File"] + FINAL_COLUMNS]
 
     _progress(progress_callback, 90, "Creating output file...")
