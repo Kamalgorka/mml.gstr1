@@ -82,7 +82,8 @@ report_options = [
     "1) SMS Report",
     "2) SMS Report Lot2",
     "3) ARC and Write Off Entries",
-    "4) WriteOff Loan Collection"
+    "4) WriteOff Loan Collection",
+    "5) OTS Data"
 ]
 
 selected_report = st.selectbox(
@@ -567,4 +568,70 @@ elif selected_report == "4) WriteOff Loan Collection":
 
             except Exception as e:
                 st.error("Error occurred while processing WriteOff Loan Collection.")
+                st.exception(e)
+
+elif selected_report == "5) OTS Data":
+
+    st.subheader("📘 OTS Data")
+
+    st.caption(
+        "Upload OTS Data file. System will process the file and generate output."
+    )
+
+    ots_file = st.file_uploader(
+        "Upload OTS Data File",
+        type=["xlsx", "xls", "xlsb", "csv"],
+        key="ots_data_file"
+    )
+
+    st.markdown("---")
+
+    run_btn = st.button(
+        "🚀 Run OTS Data",
+        use_container_width=True,
+        key="run_ots_data"
+    )
+
+    if run_btn:
+
+        if ots_file is None:
+            st.error("Please upload OTS Data file.")
+
+        else:
+
+            try:
+                from accounts_reports.ots_data import process_ots_data
+
+                progress_bar = st.progress(0)
+                status_box = st.empty()
+
+                def update_progress(percent, message):
+                    progress_bar.progress(percent)
+                    status_box.write(f"⏳ {percent}% - {message}")
+
+                with st.spinner("Processing OTS Data..."):
+
+                    output_file = process_ots_data(
+                        uploaded_file=ots_file,
+                        progress_callback=update_progress
+                    )
+
+                    with open(output_file, "rb") as f:
+                        output_bytes = f.read()
+
+                progress_bar.progress(100)
+                status_box.success("✅ 100% - OTS Data completed.")
+
+                st.success("OTS Data processed successfully.")
+
+                st.download_button(
+                    "⬇️ Download OTS Data Output",
+                    data=output_bytes,
+                    file_name="OTS_Data_Output.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+
+            except Exception as e:
+                st.error("Error occurred while processing OTS Data.")
                 st.exception(e)
