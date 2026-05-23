@@ -93,10 +93,13 @@ def _normalize_status(series):
 
 def _get_engine(filename):
     ext = os.path.splitext(filename.lower())[1]
+
     if ext == ".xlsb":
         return "pyxlsb"
+
     if ext == ".xls":
         return "xlrd"
+
     return None
 
 
@@ -108,7 +111,13 @@ def _read_uploaded_file(uploaded_file):
         return {"CSV": pd.read_csv(uploaded_file, dtype=str)}
 
     engine = _get_engine(filename)
-    return pd.read_excel(uploaded_file, sheet_name=None, dtype=str, engine=engine)
+
+    return pd.read_excel(
+        uploaded_file,
+        sheet_name=None,
+        dtype=str,
+        engine=engine
+    )
 
 
 def _combine_all_sheets(uploaded_file):
@@ -124,7 +133,10 @@ def _combine_all_sheets(uploaded_file):
         df["Source_Sheet"] = sheet_name
         frames.append(df)
 
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if not frames:
+        return pd.DataFrame()
+
+    return pd.concat(frames, ignore_index=True)
 
 
 def _pick_column(df, possible_names):
@@ -132,6 +144,7 @@ def _pick_column(df, possible_names):
 
     for name in possible_names:
         key = _norm_col(name)
+
         if key in norm_lookup:
             return norm_lookup[key]
 
@@ -147,45 +160,90 @@ def _standardize_to_final(df, source_name):
             continue
 
         source_col = _pick_column(df, COLUMN_MAP.get(final_col, []))
-        output[final_col] = df[source_col] if source_col else ""
+
+        if source_col:
+            output[final_col] = df[source_col]
+        else:
+            output[final_col] = ""
 
     output["Source_File"] = source_name
+
     return output
 
 
-def _filter_outstanding_data(df):
-    # Status: Active / WriteOff allowed
+def _filter_outstanding_data_with_cust_id_expansion(df):
+    # Outstanding IL/JLG: only ACTIVE status rows
     status = _normalize_status(df["Status"])
-    df = df[status.isin(["ACTIVE", "WRITE OFF", "WRITEOFF"])].copy()
+    active_mask = status.isin(["ACTIVE"])
 
-    # Funder filter only for Outstanding IL/JLG
-    funder = _clean_text_series(df["Funder_Description"]).str.upper()
+    df_active = df[active_mask].copy()
+
+    # Base rows: funder allowed / blank / null
+    funder = _clean_text_series(df_active["Funder_Description"]).str.upper()
 
     allowed_funder_mask = funder.isin(OUTSTANDING_ALLOWED_FUNDERS)
     blank_mask = funder.eq("") | funder.isin(["NAN", "NONE", "NULL"])
 
-    df = df[allowed_funder_mask | blank_mask].copy()
+    base_mask = allowed_funder_mask | blank_mask
 
-    # Piramal cases only > 60 DPD
-    funder_after = _clean_text_series(df["Funder_Description"]).str.upper()
-    od_days = _clean_numeric(df["Od_Days"])
+    # PIRAMAL funders only > 60 DPD
+    od_days = _clean_numeric(df_active["Od_Days"])
+    piramal_mask = funder.isin(PIRAMAL_60_DPD_FUNDERS)
 
-    piramal_mask = funder_after.isin(PIRAMAL_60_DPD_FUNDERS)
-    df = df[(~piramal_mask) | (od_days > 60)].copy()
+    base_mask = base_mask & ((~piramal_mask) | (od_days > 60))
 
-    return df
+    base_df = df_active[base_mask].copy()
+
+    # Take all ACTIVE rows of same Cust_Id also
+    qualified_cust_ids = set(
+        _clean_text_series(base_df["Cust_Id"])
+        .replace("", pd.NA)
+        .dropna()
+        .astype(str)
+    )
+
+    cust_id_series = _clean_text_series(df_active["Cust_Id"]).astype(str)
+
+    expanded_df = df_active[
+        base_mask | cust_id_series.isin(qualified_cust_ids)
+    ].copy()
+
+    return expanded_df
 
 
 def _filter_writeoff_data(df):
-    # WriteOff reports: no funder filter, only WriteOff status
+    # WriteOff IL/JLG: full cases where Status is WriteOff only
     status = _normalize_status(df["Status"])
-    return df[status.isin(["WRITE OFF", "WRITEOFF"])].copy()
+
+    return df[
+        status.isin(["WRITE OFF", "WRITEOFF"])
+    ].copy()
 
 
 def _calculate_ots_amount(df):
     principal = _clean_numeric(df["Outstanding_Principal"])
     interest = _clean_numeric(df["Outstanding_Interest"])
+
     df["OTS Amount as on May 01"] = principal + interest
+
+    return df
+
+
+def _optimize_output_types(df):
+    numeric_cols = [
+        "Principal_Arrear",
+        "Interest_Arrear",
+        "Total_Arrear",
+        "Od_Days",
+        "Outstanding_Principal",
+        "Outstanding_Interest",
+        "OTS Amount as on May 01",
+    ]
+
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = _clean_numeric(df[col])
+
     return df
 
 
@@ -197,20 +255,23 @@ def process_ots_data(
     progress_callback=None
 ):
     _progress(progress_callback, 5, "Reading Outstanding IL file...")
+
     outstanding_il = _standardize_to_final(
         _combine_all_sheets(outstanding_il_file),
         "Outstanding IL"
     )
-    outstanding_il = _filter_outstanding_data(outstanding_il)
+    outstanding_il = _filter_outstanding_data_with_cust_id_expansion(outstanding_il)
 
     _progress(progress_callback, 25, "Reading Outstanding JLG file...")
+
     outstanding_jlg = _standardize_to_final(
         _combine_all_sheets(outstanding_jlg_file),
         "Outstanding JLG"
     )
-    outstanding_jlg = _filter_outstanding_data(outstanding_jlg)
+    outstanding_jlg = _filter_outstanding_data_with_cust_id_expansion(outstanding_jlg)
 
     _progress(progress_callback, 45, "Reading Write Off IL file...")
+
     writeoff_il = _standardize_to_final(
         _combine_all_sheets(writeoff_il_file),
         "Write Off IL"
@@ -218,6 +279,7 @@ def process_ots_data(
     writeoff_il = _filter_writeoff_data(writeoff_il)
 
     _progress(progress_callback, 60, "Reading Write Off JLG file...")
+
     writeoff_jlg = _standardize_to_final(
         _combine_all_sheets(writeoff_jlg_file),
         "Write Off JLG"
@@ -233,13 +295,31 @@ def process_ots_data(
 
     final_df = _calculate_ots_amount(final_df)
     final_df = final_df[["Source_File"] + FINAL_COLUMNS]
+    final_df = _optimize_output_types(final_df)
 
     _progress(progress_callback, 90, "Creating output file...")
 
-    output_path = os.path.join(tempfile.gettempdir(), "OTS_Data_Output.xlsx")
+    output_path = os.path.join(
+        tempfile.gettempdir(),
+        "OTS_Data_Output.xlsx"
+    )
 
-    with pd.ExcelWriter(output_path, engine="xlsxwriter") as writer:
-        final_df.to_excel(writer, index=False, sheet_name="OTS Data")
+    with pd.ExcelWriter(
+        output_path,
+        engine="xlsxwriter",
+        engine_kwargs={
+            "options": {
+                "strings_to_numbers": True,
+                "strings_to_urls": False,
+                "constant_memory": True,
+            }
+        }
+    ) as writer:
+        final_df.to_excel(
+            writer,
+            index=False,
+            sheet_name="OTS Data"
+        )
 
         workbook = writer.book
         worksheet = writer.sheets["OTS Data"]
@@ -247,17 +327,15 @@ def process_ots_data(
         header_format = workbook.add_format({
             "bold": True,
             "bg_color": "#D9EAF7",
-            "border": 1,
             "align": "center",
             "valign": "vcenter",
         })
 
         for col_num, value in enumerate(final_df.columns):
             worksheet.write(0, col_num, value, header_format)
-            worksheet.set_column(col_num, col_num, 18)
 
         worksheet.freeze_panes(1, 0)
-        worksheet.autofilter(0, 0, len(final_df), len(final_df.columns) - 1)
 
     _progress(progress_callback, 100, "OTS Data report generated successfully.")
+
     return output_path
