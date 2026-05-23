@@ -130,6 +130,17 @@ def _read_uploaded_file(uploaded_file):
     )
 
 
+def _pick_column(df, possible_names):
+    norm_lookup = {_norm_col(c): c for c in df.columns}
+
+    for name in possible_names:
+        key = _norm_col(name)
+        if key in norm_lookup:
+            return norm_lookup[key]
+
+    return None
+
+
 def _combine_all_sheets(uploaded_file, skip_offbook=True):
     sheets = _read_uploaded_file(uploaded_file)
     frames = []
@@ -162,24 +173,16 @@ def _extract_offbook_loan_ids(outstanding_jlg_file):
         df = df.copy()
         df.columns = [str(c).strip() for c in df.columns]
 
-        loan_col = _pick_column(df, ["Finpage LoanNo", "Finpage_Loan_No", "finpage_loan_no"])
+        loan_col = _pick_column(
+            df,
+            ["Finpage LoanNo", "Finpage_Loan_No", "finpage_loan_no", "Finpage Loan No"]
+        )
 
         if loan_col:
             ids = _clean_id_series(df[loan_col])
             offbook_ids.update(ids[ids.ne("")].tolist())
 
     return offbook_ids
-
-
-def _pick_column(df, possible_names):
-    norm_lookup = {_norm_col(c): c for c in df.columns}
-
-    for name in possible_names:
-        key = _norm_col(name)
-        if key in norm_lookup:
-            return norm_lookup[key]
-
-    return None
 
 
 def _standardize_to_final(df, source_name):
@@ -224,9 +227,11 @@ def _filter_outstanding_data_with_cust_id_expansion(df):
 
     cust_id_series = _clean_id_series(df_active["Cust_Id"])
 
-    return df_active[
+    expanded_df = df_active[
         base_mask | cust_id_series.isin(qualified_cust_ids)
     ].copy()
+
+    return expanded_df
 
 
 def _filter_writeoff_data(df):
@@ -244,8 +249,13 @@ def _calculate_ots_amount(df):
 
 def _optimize_output_types(df):
     numeric_cols = [
-        "Principal_Arrear", "Interest_Arrear", "Total_Arrear", "Od_Days",
-        "Outstanding_Principal", "Outstanding_Interest", "OTS Amount as on May 01",
+        "Principal_Arrear",
+        "Interest_Arrear",
+        "Total_Arrear",
+        "Od_Days",
+        "Outstanding_Principal",
+        "Outstanding_Interest",
+        "OTS Amount as on May 01",
     ]
 
     for col in numeric_cols:
@@ -312,45 +322,16 @@ def process_ots_data(
     final_df = _remove_offbook_ids(final_df, offbook_ids)
     final_df = _optimize_output_types(final_df)
 
-    _progress(progress_callback, 90, "Creating Excel output file...")
+    _progress(progress_callback, 90, "Creating compressed ZIP output...")
 
-output_path = os.path.join(
-    tempfile.gettempdir(),
-    "OTS_Data_Output.xlsx"
-)
+    temp_dir = tempfile.gettempdir()
+    csv_path = os.path.join(temp_dir, "OTS_Data_Output.csv")
+    zip_path = os.path.join(temp_dir, "OTS_Data_Output.zip")
 
-with pd.ExcelWriter(
-    output_path,
-    engine="xlsxwriter",
-    engine_kwargs={
-        "options": {
-            "strings_to_numbers": True,
-            "strings_to_urls": False,
-        }
-    }
-) as writer:
+    final_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
 
-    final_df.to_excel(
-        writer,
-        index=False,
-        sheet_name="OTS Data"
-    )
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+        zf.write(csv_path, arcname="OTS_Data_Output.csv")
 
-    workbook = writer.book
-    worksheet = writer.sheets["OTS Data"]
-
-    header_format = workbook.add_format({
-        "bold": True,
-        "bg_color": "#D9EAF7",
-        "align": "center",
-        "valign": "vcenter",
-    })
-
-    for col_num, value in enumerate(final_df.columns):
-        worksheet.write(0, col_num, value, header_format)
-
-    worksheet.freeze_panes(1, 0)
-
-_progress(progress_callback, 100, "OTS Data report generated successfully.")
-
-return output_path
+    _progress(progress_callback, 100, "OTS Data report generated successfully.")
+    return zip_path
