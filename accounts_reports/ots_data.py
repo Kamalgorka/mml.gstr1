@@ -1,5 +1,6 @@
 import os
 import tempfile
+import zipfile
 import pandas as pd
 
 
@@ -69,8 +70,22 @@ def _norm_col(col):
     return str(col).strip().lower().replace(" ", "").replace("_", "").replace(".", "")
 
 
+def _norm_sheet_name(name):
+    return str(name).strip().lower().replace(" ", "").replace("_", "").replace("-", "")
+
+
 def _clean_text_series(series):
     return series.fillna("").astype(str).str.strip()
+
+
+def _clean_id_series(series):
+    return (
+        series.fillna("")
+        .astype(str)
+        .str.strip()
+        .str.replace(",", "", regex=False)
+        .str.replace(r"\.0$", "", regex=True)
+    )
 
 
 def _clean_numeric(series):
@@ -93,13 +108,10 @@ def _normalize_status(series):
 
 def _get_engine(filename):
     ext = os.path.splitext(filename.lower())[1]
-
     if ext == ".xlsb":
         return "pyxlsb"
-
     if ext == ".xls":
         return "xlrd"
-
     return None
 
 
@@ -110,33 +122,53 @@ def _read_uploaded_file(uploaded_file):
     if ext == ".csv":
         return {"CSV": pd.read_csv(uploaded_file, dtype=str)}
 
-    engine = _get_engine(filename)
-
     return pd.read_excel(
         uploaded_file,
         sheet_name=None,
         dtype=str,
-        engine=engine
+        engine=_get_engine(filename)
     )
 
 
-def _combine_all_sheets(uploaded_file):
+def _combine_all_sheets(uploaded_file, skip_offbook=True):
     sheets = _read_uploaded_file(uploaded_file)
     frames = []
 
     for sheet_name, df in sheets.items():
+        if skip_offbook and _norm_sheet_name(sheet_name) in {"offbookids", "offbookid"}:
+            continue
+
         if df is None or df.empty:
             continue
 
         df = df.copy()
         df.columns = [str(c).strip() for c in df.columns]
-        df["Source_Sheet"] = sheet_name
         frames.append(df)
 
-    if not frames:
-        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-    return pd.concat(frames, ignore_index=True)
+
+def _extract_offbook_loan_ids(outstanding_jlg_file):
+    sheets = _read_uploaded_file(outstanding_jlg_file)
+    offbook_ids = set()
+
+    for sheet_name, df in sheets.items():
+        if _norm_sheet_name(sheet_name) not in {"offbookids", "offbookid"}:
+            continue
+
+        if df is None or df.empty:
+            continue
+
+        df = df.copy()
+        df.columns = [str(c).strip() for c in df.columns]
+
+        loan_col = _pick_column(df, ["Finpage LoanNo", "Finpage_Loan_No", "finpage_loan_no"])
+
+        if loan_col:
+            ids = _clean_id_series(df[loan_col])
+            offbook_ids.update(ids[ids.ne("")].tolist())
+
+    return offbook_ids
 
 
 def _pick_column(df, possible_names):
@@ -144,7 +176,6 @@ def _pick_column(df, possible_names):
 
     for name in possible_names:
         key = _norm_col(name)
-
         if key in norm_lookup:
             return norm_lookup[key]
 
@@ -160,25 +191,16 @@ def _standardize_to_final(df, source_name):
             continue
 
         source_col = _pick_column(df, COLUMN_MAP.get(final_col, []))
-
-        if source_col:
-            output[final_col] = df[source_col]
-        else:
-            output[final_col] = ""
+        output[final_col] = df[source_col] if source_col else ""
 
     output["Source_File"] = source_name
-
     return output
 
 
 def _filter_outstanding_data_with_cust_id_expansion(df):
-    # Outstanding IL/JLG: only ACTIVE status rows
     status = _normalize_status(df["Status"])
-    active_mask = status.isin(["ACTIVE"])
+    df_active = df[status.isin(["ACTIVE"])].copy()
 
-    df_active = df[active_mask].copy()
-
-    # Base rows: funder allowed / blank / null
     funder = _clean_text_series(df_active["Funder_Description"]).str.upper()
 
     allowed_funder_mask = funder.isin(OUTSTANDING_ALLOWED_FUNDERS)
@@ -186,7 +208,6 @@ def _filter_outstanding_data_with_cust_id_expansion(df):
 
     base_mask = allowed_funder_mask | blank_mask
 
-    # PIRAMAL funders only > 60 DPD
     od_days = _clean_numeric(df_active["Od_Days"])
     piramal_mask = funder.isin(PIRAMAL_60_DPD_FUNDERS)
 
@@ -194,50 +215,37 @@ def _filter_outstanding_data_with_cust_id_expansion(df):
 
     base_df = df_active[base_mask].copy()
 
-    # Take all ACTIVE rows of same Cust_Id also
     qualified_cust_ids = set(
-        _clean_text_series(base_df["Cust_Id"])
+        _clean_id_series(base_df["Cust_Id"])
         .replace("", pd.NA)
         .dropna()
         .astype(str)
     )
 
-    cust_id_series = _clean_text_series(df_active["Cust_Id"]).astype(str)
+    cust_id_series = _clean_id_series(df_active["Cust_Id"])
 
-    expanded_df = df_active[
+    return df_active[
         base_mask | cust_id_series.isin(qualified_cust_ids)
     ].copy()
 
-    return expanded_df
-
 
 def _filter_writeoff_data(df):
-    # WriteOff IL/JLG: full cases where Status is WriteOff only
     status = _normalize_status(df["Status"])
-
-    return df[
-        status.isin(["WRITE OFF", "WRITEOFF"])
-    ].copy()
+    return df[status.isin(["WRITE OFF", "WRITEOFF"])].copy()
 
 
 def _calculate_ots_amount(df):
-    principal = _clean_numeric(df["Outstanding_Principal"])
-    interest = _clean_numeric(df["Outstanding_Interest"])
-
-    df["OTS Amount as on May 01"] = principal + interest
-
+    df["OTS Amount as on May 01"] = (
+        _clean_numeric(df["Outstanding_Principal"])
+        + _clean_numeric(df["Outstanding_Interest"])
+    )
     return df
 
 
 def _optimize_output_types(df):
     numeric_cols = [
-        "Principal_Arrear",
-        "Interest_Arrear",
-        "Total_Arrear",
-        "Od_Days",
-        "Outstanding_Principal",
-        "Outstanding_Interest",
-        "OTS Amount as on May 01",
+        "Principal_Arrear", "Interest_Arrear", "Total_Arrear", "Od_Days",
+        "Outstanding_Principal", "Outstanding_Interest", "OTS Amount as on May 01",
     ]
 
     for col in numeric_cols:
@@ -247,6 +255,14 @@ def _optimize_output_types(df):
     return df
 
 
+def _remove_offbook_ids(final_df, offbook_ids):
+    if not offbook_ids:
+        return final_df
+
+    loan_series = _clean_id_series(final_df["Finpage_Loan_No"])
+    return final_df[~loan_series.isin(offbook_ids)].copy()
+
+
 def process_ots_data(
     outstanding_il_file,
     outstanding_jlg_file,
@@ -254,40 +270,38 @@ def process_ots_data(
     writeoff_jlg_file,
     progress_callback=None
 ):
-    _progress(progress_callback, 5, "Reading Outstanding IL file...")
+    _progress(progress_callback, 5, "Reading Off Book IDs...")
+    offbook_ids = _extract_offbook_loan_ids(outstanding_jlg_file)
 
+    _progress(progress_callback, 10, "Reading Outstanding IL file...")
     outstanding_il = _standardize_to_final(
         _combine_all_sheets(outstanding_il_file),
         "Outstanding IL"
     )
     outstanding_il = _filter_outstanding_data_with_cust_id_expansion(outstanding_il)
 
-    _progress(progress_callback, 25, "Reading Outstanding JLG file...")
-
+    _progress(progress_callback, 30, "Reading Outstanding JLG file...")
     outstanding_jlg = _standardize_to_final(
         _combine_all_sheets(outstanding_jlg_file),
         "Outstanding JLG"
     )
     outstanding_jlg = _filter_outstanding_data_with_cust_id_expansion(outstanding_jlg)
 
-    _progress(progress_callback, 45, "Reading Write Off IL file...")
-
+    _progress(progress_callback, 50, "Reading Write Off IL file...")
     writeoff_il = _standardize_to_final(
         _combine_all_sheets(writeoff_il_file),
         "Write Off IL"
     )
     writeoff_il = _filter_writeoff_data(writeoff_il)
 
-    _progress(progress_callback, 60, "Reading Write Off JLG file...")
-
+    _progress(progress_callback, 65, "Reading Write Off JLG file...")
     writeoff_jlg = _standardize_to_final(
         _combine_all_sheets(writeoff_jlg_file),
         "Write Off JLG"
     )
     writeoff_jlg = _filter_writeoff_data(writeoff_jlg)
 
-    _progress(progress_callback, 75, "Combining final OTS data...")
-
+    _progress(progress_callback, 78, "Combining final OTS data...")
     final_df = pd.concat(
         [outstanding_il, outstanding_jlg, writeoff_il, writeoff_jlg],
         ignore_index=True
@@ -295,46 +309,19 @@ def process_ots_data(
 
     final_df = _calculate_ots_amount(final_df)
     final_df = final_df[["Source_File"] + FINAL_COLUMNS]
+    final_df = _remove_offbook_ids(final_df, offbook_ids)
     final_df = _optimize_output_types(final_df)
 
-    _progress(progress_callback, 90, "Creating output file...")
+    _progress(progress_callback, 90, "Creating compressed ZIP output...")
 
-    output_path = os.path.join(
-        tempfile.gettempdir(),
-        "OTS_Data_Output.xlsx"
-    )
+    temp_dir = tempfile.gettempdir()
+    csv_path = os.path.join(temp_dir, "OTS_Data_Output.csv")
+    zip_path = os.path.join(temp_dir, "OTS_Data_Output.zip")
 
-    with pd.ExcelWriter(
-        output_path,
-        engine="xlsxwriter",
-        engine_kwargs={
-            "options": {
-                "strings_to_numbers": True,
-                "strings_to_urls": False,
-            }
-        }
-    ) as writer:
-        final_df.to_excel(
-            writer,
-            index=False,
-            sheet_name="OTS Data"
-        )
+    final_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
 
-        workbook = writer.book
-        worksheet = writer.sheets["OTS Data"]
-
-        header_format = workbook.add_format({
-            "bold": True,
-            "bg_color": "#D9EAF7",
-            "align": "center",
-            "valign": "vcenter",
-        })
-
-        for col_num, value in enumerate(final_df.columns):
-            worksheet.write(0, col_num, value, header_format)
-
-        worksheet.freeze_panes(1, 0)
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+        zf.write(csv_path, arcname="OTS_Data_Output.csv")
 
     _progress(progress_callback, 100, "OTS Data report generated successfully.")
-
-    return output_path
+    return zip_path
