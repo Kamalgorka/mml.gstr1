@@ -311,7 +311,6 @@ def process_ots_data(
             "options": {
                 "strings_to_numbers": True,
                 "strings_to_urls": False,
-                "constant_memory": True,
             }
         }
     ) as writer:
