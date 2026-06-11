@@ -2,7 +2,7 @@ import streamlit as st
 from auth_utils import require_role, log_activity
 from ui import load_global_css
 from accounts_reports.ots_data import process_ots_data
-
+from accounts_reports.single_client_od import process_single_client_od
 # =========================================================
 # PAGE CONFIG - must be first Streamlit command
 # =========================================================
@@ -84,7 +84,8 @@ report_options = [
     "2) SMS Report Lot2",
     "3) ARC and Write Off Entries",
     "4) WriteOff Loan Collection",
-    "5) OTS Data"
+    "5) OTS Data",
+    "6) Single Client OD in a Center"
 ]
 
 selected_report = st.selectbox(
@@ -641,3 +642,28 @@ elif selected_report == "5) OTS Data":
 
             except Exception as e:
                 st.error(f"Error while generating OTS Data Report: {e}")
+
+elif selected_report == "6) Single Client OD in a Center":
+    st.subheader("6) Single Client OD in a Center")
+
+    arrear_file = st.file_uploader(
+        "Upload Arrear Report",
+        type=["xlsx", "xls", "xlsb", "csv"],
+        key="single_client_od_arrear"
+    )
+
+    if st.button("Generate Single Client OD Report", key="generate_single_client_od"):
+        if arrear_file is None:
+            st.error("Please upload Arrear Report.")
+        else:
+            with st.spinner("Processing Single Client OD Report..."):
+                output_path = process_single_client_od(arrear_file)
+
+            with open(output_path, "rb") as f:
+                st.success("Single Client OD Report generated successfully.")
+                st.download_button(
+                    label="Download Single Client OD Report",
+                    data=f,
+                    file_name="Single_Client_OD_in_Center.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
