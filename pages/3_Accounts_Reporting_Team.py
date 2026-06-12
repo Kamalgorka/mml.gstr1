@@ -371,6 +371,19 @@ elif selected_report == "2) SMS Report Lot2":
 
                     with open(zip_path, "rb") as f:
                         st.session_state["sms_lot2_zip_bytes"] = f.read()
+                    import uuid
+
+                    download_dir = "/opt/apps/streamlit/mml_smart_reports/downloads/sms_lot2"
+                    os.makedirs(download_dir, exist_ok=True)
+                    
+                    download_filename = f"SMS_Report_Lot2_Output_{uuid.uuid4().hex}.zip"
+                    download_path = os.path.join(download_dir, download_filename)
+                    
+                    shutil.copy2(zip_path, download_path)
+                    
+                    st.session_state["sms_lot2_download_url"] = (
+                        f"/mmlsmartreports/downloads/sms_lot2/{download_filename}"
+                    )
 
                     st.session_state["sms_lot2_zip_name"] = "SMS_Report_Lot2_Output.zip"
                     st.session_state["sms_lot2_summary"] = summary
@@ -400,18 +413,13 @@ elif selected_report == "2) SMS Report Lot2":
                     f"Rows: {item['rows']}"
                 )
 
-    if "sms_lot2_zip_bytes" in st.session_state:
-        st.info(f"ZIP ready. Size: {len(st.session_state['sms_lot2_zip_bytes']) / (1024 * 1024):.2f} MB")
-
-        st.download_button(
-            "⬇️ Download SMS Report Lot2 Output ZIP",
-            data=st.session_state["sms_lot2_zip_bytes"],
-            file_name=st.session_state.get("sms_lot2_zip_name", "SMS_Report_Lot2_Output.zip"),
-            mime="application/zip",
-            use_container_width=True,
-            key="download_sms_lot2_zip",
-            on_click="ignore"
-        )
+        if "sms_lot2_download_url" in st.session_state:
+            st.link_button(
+                "⬇️ Download SMS Report Lot2 Output ZIP",
+                st.session_state["sms_lot2_download_url"],
+                use_container_width=True
+            )
+        
 elif selected_report == "3) ARC and Write Off Entries":
 
     st.subheader("📘 ARC and Write Off Entries")
