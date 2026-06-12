@@ -1,5 +1,4 @@
 import os
-import zipfile
 import pandas as pd
 
 
@@ -225,7 +224,6 @@ def consolidate_arrear_free_into_arrear(arrear_free_df, arrear_df):
         ~arrear_free_df["cust_id"].isin(matched_ids)
     ].copy()
 
-    # Recalculate discrepancies after consolidation
     arrear_free_df = add_discrepancy_column(
         arrear_free_df,
         check_total_arrear=False
@@ -254,7 +252,6 @@ def build_writeoff_lookup(loan_os_file, loan_os_il_file):
 
     df["status"] = df["status"].astype(str).str.strip()
 
-    # Keep only WriteOff cases before consolidation
     df = df[df["status"].str.lower().eq("writeoff")].copy()
 
     for col in [
@@ -297,7 +294,6 @@ def enrich_not_sent_writeoff_sms(not_sent_writeoff_file, lookup_df):
         if col not in base_df.columns:
             base_df[col] = ""
 
-    # Inner join removes rows where cust_id is not available after WriteOff-only filter
     merged = base_df.merge(
         lookup_df,
         on="cust_id",
@@ -332,7 +328,6 @@ def process_not_sent_sms_data(not_sent_sms_file):
 
     df["status"] = df["status"].astype(str).str.strip()
 
-    # Keep only Active cases
     df = df[df["status"].str.lower().eq("active")].copy()
 
     df["max_od_days"] = pd.to_numeric(df["max_od_days"], errors="coerce").fillna(0)
@@ -384,74 +379,34 @@ def process_sms_report_lot2(files, output_dir, progress_callback=None):
         files["Not Sent SMS Data"]
     )
 
-    not_sent_arrear_free_path = os.path.join(
-        output_dir,
-        "Arrear Free Not Sent SMS Data.csv"
-    )
-
-    not_sent_arrear_path = os.path.join(
-        output_dir,
-        "Arrear Not Sent SMS Data.csv"
-    )
-
-    not_sent_writeoff_path = os.path.join(
-        output_dir,
-        "Not Sent Write Off SMS Data Updated.csv"
-    )
-
-    lookup_path = os.path.join(
-        output_dir,
-        "Loan OS Write Off Consolidated Lookup.csv"
-    )
-
-    arrear_free_df.to_csv(
-        not_sent_arrear_free_path,
-        index=False,
-        encoding="utf-8-sig"
-    )
-
-    arrear_df.to_csv(
-        not_sent_arrear_path,
-        index=False,
-        encoding="utf-8-sig"
-    )
-
-    enriched_writeoff_df.to_csv(
-        not_sent_writeoff_path,
-        index=False,
-        encoding="utf-8-sig"
-    )
-
-    lookup_df.to_csv(
-        lookup_path,
-        index=False,
-        encoding="utf-8-sig"
-    )
-
     if progress_callback:
-        progress_callback(90, "Creating ZIP file...")
+        progress_callback(90, "Creating Excel output file...")
 
-    zip_path = os.path.join(output_dir, "SMS_Report_Lot2_Output.zip")
+    output_path = os.path.join(output_dir, "SMS_Report_Lot2_Output.xlsx")
 
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        zipf.write(
-            not_sent_arrear_free_path,
-            arcname="Arrear Free Not Sent SMS Data.csv"
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        arrear_free_df.to_excel(
+            writer,
+            sheet_name="Arrear Free",
+            index=False
         )
 
-        zipf.write(
-            not_sent_arrear_path,
-            arcname="Arrear Not Sent SMS Data.csv"
+        arrear_df.to_excel(
+            writer,
+            sheet_name="Arrear",
+            index=False
         )
 
-        zipf.write(
-            not_sent_writeoff_path,
-            arcname="Not Sent Write Off SMS Data Updated.csv"
+        enriched_writeoff_df.to_excel(
+            writer,
+            sheet_name="Write Off SMS",
+            index=False
         )
 
-        zipf.write(
-            lookup_path,
-            arcname="Loan OS Write Off Consolidated Lookup.csv"
+        lookup_df.to_excel(
+            writer,
+            sheet_name="Write Off Lookup",
+            index=False
         )
 
     if progress_callback:
@@ -483,4 +438,4 @@ def process_sms_report_lot2(files, output_dir, progress_callback=None):
         }
     ]
 
-    return summary, zip_path
+    return summary, output_path
