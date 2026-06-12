@@ -320,6 +320,8 @@ elif selected_report == "2) SMS Report Lot2":
 
         st.session_state.pop("sms_lot2_zip_bytes", None)
         st.session_state.pop("sms_lot2_zip_name", None)
+        st.session_state.pop("sms_lot2_download_url", None)
+        st.session_state.pop("sms_lot2_summary", None)
 
         required_files = {
             "Not Sent SMS Data": not_sent_sms_file,
