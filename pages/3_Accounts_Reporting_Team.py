@@ -367,7 +367,9 @@ elif selected_report == "2) SMS Report Lot2":
                     )
 
                     with open(zip_path, "rb") as f:
-                        zip_bytes = f.read()
+                        st.session_state["sms_lot2_zip_bytes"] = f.read()
+
+                    st.session_state["sms_lot2_zip_name"] = "SMS_Report_Lot2_Output.zip"
                 progress_bar.progress(100)
                 status_box.success("✅ 100% - SMS Report Lot2 processing completed.")
 
@@ -388,14 +390,15 @@ elif selected_report == "2) SMS Report Lot2":
                             f"Rows: {item['rows']}"
                         )
 
-                st.download_button(
-                    "⬇️ Download SMS Report Lot2 Output ZIP",
-                    data=zip_bytes,
-                    file_name="SMS_Report_Lot2_Output.zip",
-                    mime="application/octet-stream",
-                    use_container_width=True,
-                    key="download_sms_lot2_zip"
-                )
+                if "sms_lot2_zip_bytes" in st.session_state:
+    st.download_button(
+        "⬇️ Download SMS Report Lot2 Output ZIP",
+        data=st.session_state["sms_lot2_zip_bytes"],
+        file_name=st.session_state.get("sms_lot2_zip_name", "SMS_Report_Lot2_Output.zip"),
+        mime="application/zip",
+        use_container_width=True,
+        key="download_sms_lot2_zip"
+    )                    
 
             except Exception as e:
                 st.error("Error occurred while processing SMS Report Lot2.")
