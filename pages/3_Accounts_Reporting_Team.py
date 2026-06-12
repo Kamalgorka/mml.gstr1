@@ -340,7 +340,8 @@ elif selected_report == "2) SMS Report Lot2":
         else:
 
             try:
-                import tempfile
+                import os
+                import shutil
                 from accounts_reports.sms_report_lot2 import process_sms_report_lot2
 
                 progress_bar = st.progress(0)
@@ -352,17 +353,21 @@ elif selected_report == "2) SMS Report Lot2":
 
                 with st.spinner("Processing SMS Report Lot2..."):
 
-                    with tempfile.TemporaryDirectory() as workdir:
+                    workdir = "/tmp/mml_sms_lot2_outputs"
 
-                        summary, zip_path = process_sms_report_lot2(
-                            files=required_files,
-                            output_dir=workdir,
-                            progress_callback=update_progress
-                        )
+                    if os.path.exists(workdir):
+                        shutil.rmtree(workdir)
 
-                        with open(zip_path, "rb") as f:
-                            zip_bytes = f.read()
+                    os.makedirs(workdir, exist_ok=True)
 
+                    summary, zip_path = process_sms_report_lot2(
+                        files=required_files,
+                        output_dir=workdir,
+                        progress_callback=update_progress
+                    )
+
+                    with open(zip_path, "rb") as f:
+                        zip_bytes = f.read()
                 progress_bar.progress(100)
                 status_box.success("✅ 100% - SMS Report Lot2 processing completed.")
 
@@ -387,8 +392,9 @@ elif selected_report == "2) SMS Report Lot2":
                     "⬇️ Download SMS Report Lot2 Output ZIP",
                     data=zip_bytes,
                     file_name="SMS_Report_Lot2_Output.zip",
-                    mime="application/zip",
-                    use_container_width=True
+                    mime="application/octet-stream",
+                    use_container_width=True,
+                    key="download_sms_lot2_zip"
                 )
 
             except Exception as e:
