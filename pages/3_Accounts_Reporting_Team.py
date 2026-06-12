@@ -3,6 +3,7 @@ from auth_utils import require_role, log_activity
 from ui import load_global_css
 from accounts_reports.ots_data import process_ots_data
 from accounts_reports.single_client_od import process_single_client_od
+from accounts_reports.od_amount_less_1000 import process_od_amount_less_1000
 # =========================================================
 # PAGE CONFIG - must be first Streamlit command
 # =========================================================
@@ -86,7 +87,7 @@ report_options = [
     "4) WriteOff Loan Collection",
     "5) OTS Data",
     "6) Single Client OD in a Center",
-    "7) OD Amount <1000 Non-NPA Clients"
+    "7) "7) OD Amount Less 1000 Non NPA Clients""
 ]
 
 selected_report = st.selectbox(
@@ -694,26 +695,26 @@ elif selected_report == "6) Single Client OD in a Center":
                     file_name="Single_Client_OD_in_Center.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-elif selected_report == "7) OD Amount <1000 Non-NPA Clients":
-    st.subheader("7) OD Amount <1000 Non-NPA Clients")
+elif selected_report == "7) OD Amount Less 1000 Non NPA Clients":
+    st.subheader("7) OD Amount Less 1000 Non NPA Clients")
 
     arrear_file = st.file_uploader(
         "Upload Arrear Report",
         type=["xlsx", "xls", "xlsb", "csv"],
-        key="od_less_1000_arrear"
+        key="od_amount_less_1000_arrear"
     )
 
-    if st.button("Generate OD Amount <1000 Report", key="generate_od_less_1000"):
+    if st.button("Generate OD Amount Less 1000 Report", key="generate_od_amount_less_1000"):
         if arrear_file is None:
             st.error("Please upload Arrear Report.")
         else:
-            with st.spinner("Processing OD Amount <1000 Report..."):
-                output_path = process_od_less_1000(arrear_file)
+            with st.spinner("Processing OD Amount Less 1000 Report..."):
+                output_path = process_od_amount_less_1000(arrear_file)
 
             with open(output_path, "rb") as f:
-                st.success("OD Amount <1000 Report generated successfully.")
+                st.success("OD Amount Less 1000 Report generated successfully.")
                 st.download_button(
-                    label="Download OD Amount <1000 Report",
+                    label="Download OD Amount Less 1000 Report",
                     data=f,
                     file_name="OD_Amount_Less_1000_Non_NPA_Clients.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
