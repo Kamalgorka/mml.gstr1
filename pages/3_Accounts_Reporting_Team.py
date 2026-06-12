@@ -85,7 +85,8 @@ report_options = [
     "3) ARC and Write Off Entries",
     "4) WriteOff Loan Collection",
     "5) OTS Data",
-    "6) Single Client OD in a Center"
+    "6) Single Client OD in a Center",
+    "7) OD Amount <1000 Non-NPA Clients"
 ]
 
 selected_report = st.selectbox(
@@ -691,5 +692,29 @@ elif selected_report == "6) Single Client OD in a Center":
                     label="Download Single Client OD Report",
                     data=f,
                     file_name="Single_Client_OD_in_Center.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+elif selected_report == "7) OD Amount <1000 Non-NPA Clients":
+    st.subheader("7) OD Amount <1000 Non-NPA Clients")
+
+    arrear_file = st.file_uploader(
+        "Upload Arrear Report",
+        type=["xlsx", "xls", "xlsb", "csv"],
+        key="od_less_1000_arrear"
+    )
+
+    if st.button("Generate OD Amount <1000 Report", key="generate_od_less_1000"):
+        if arrear_file is None:
+            st.error("Please upload Arrear Report.")
+        else:
+            with st.spinner("Processing OD Amount <1000 Report..."):
+                output_path = process_od_less_1000(arrear_file)
+
+            with open(output_path, "rb") as f:
+                st.success("OD Amount <1000 Report generated successfully.")
+                st.download_button(
+                    label="Download OD Amount <1000 Report",
+                    data=f,
+                    file_name="OD_Amount_Less_1000_Non_NPA_Clients.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
