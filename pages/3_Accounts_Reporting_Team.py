@@ -378,7 +378,7 @@ elif selected_report == "2) SMS Report Lot2":
                     download_dir = "/opt/apps/streamlit/mml_smart_reports/downloads/sms_lot2"
                     os.makedirs(download_dir, exist_ok=True)
                     
-                    download_filename = f"SMS_Report_Lot2_Output_{uuid.uuid4().hex}.txt"
+                    download_filename = f"SMS_Report_Lot2_Output_{uuid.uuid4().hex}.xlsx"
                     download_path = os.path.join(download_dir, download_filename)
                     
                     shutil.copy2(zip_path, download_path)
@@ -417,7 +417,7 @@ elif selected_report == "2) SMS Report Lot2":
 
         if "sms_lot2_download_url" in st.session_state:
             st.link_button(
-                "⬇️ Download SMS Report Lot2 Output ZIP",
+                "⬇️ Download SMS Report Lot2 Output Excel",
                 st.session_state["sms_lot2_download_url"],
                 use_container_width=True
             )
