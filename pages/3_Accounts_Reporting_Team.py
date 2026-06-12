@@ -318,6 +318,9 @@ elif selected_report == "2) SMS Report Lot2":
 
     if run_btn:
 
+        st.session_state.pop("sms_lot2_zip_bytes", None)
+        st.session_state.pop("sms_lot2_zip_name", None)
+
         required_files = {
             "Not Sent SMS Data": not_sent_sms_file,
             "Not Sent Write Off SMS Data": not_sent_writeoff_sms_file,
@@ -370,40 +373,42 @@ elif selected_report == "2) SMS Report Lot2":
                         st.session_state["sms_lot2_zip_bytes"] = f.read()
 
                     st.session_state["sms_lot2_zip_name"] = "SMS_Report_Lot2_Output.zip"
+                    st.session_state["sms_lot2_summary"] = summary
+
                 progress_bar.progress(100)
                 status_box.success("✅ 100% - SMS Report Lot2 processing completed.")
 
                 st.success("SMS Report Lot2 processed successfully.")
 
-                st.write("### Processing Summary")
-
-                for item in summary:
-                    if "discrepancy_rows" in item:
-                        st.write(
-                            f"✅ {item['report_name']} | "
-                            f"Rows: {item['rows']} | "
-                            f"Discrepancies: {item['discrepancy_rows']}"
-                        )
-                    else:
-                        st.write(
-                            f"✅ {item['report_name']} | "
-                            f"Rows: {item['rows']}"
-                        )
-
-                if "sms_lot2_zip_bytes" in st.session_state:
-    st.download_button(
-        "⬇️ Download SMS Report Lot2 Output ZIP",
-        data=st.session_state["sms_lot2_zip_bytes"],
-        file_name=st.session_state.get("sms_lot2_zip_name", "SMS_Report_Lot2_Output.zip"),
-        mime="application/zip",
-        use_container_width=True,
-        key="download_sms_lot2_zip"
-    )                    
-
             except Exception as e:
                 st.error("Error occurred while processing SMS Report Lot2.")
                 st.exception(e)
 
+    if "sms_lot2_summary" in st.session_state:
+        st.write("### Processing Summary")
+
+        for item in st.session_state["sms_lot2_summary"]:
+            if "discrepancy_rows" in item:
+                st.write(
+                    f"✅ {item['report_name']} | "
+                    f"Rows: {item['rows']} | "
+                    f"Discrepancies: {item['discrepancy_rows']}"
+                )
+            else:
+                st.write(
+                    f"✅ {item['report_name']} | "
+                    f"Rows: {item['rows']}"
+                )
+
+    if "sms_lot2_zip_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Download SMS Report Lot2 Output ZIP",
+            data=st.session_state["sms_lot2_zip_bytes"],
+            file_name=st.session_state.get("sms_lot2_zip_name", "SMS_Report_Lot2_Output.zip"),
+            mime="application/zip",
+            use_container_width=True,
+            key="download_sms_lot2_zip"
+        )
 
 elif selected_report == "3) ARC and Write Off Entries":
 
