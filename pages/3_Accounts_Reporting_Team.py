@@ -401,15 +401,17 @@ elif selected_report == "2) SMS Report Lot2":
                 )
 
     if "sms_lot2_zip_bytes" in st.session_state:
-        st.download_button(
-            "⬇️ Download SMS Report Lot2 Output ZIP",
-            data=st.session_state["sms_lot2_zip_bytes"],
-            file_name=st.session_state.get("sms_lot2_zip_name", "SMS_Report_Lot2_Output.zip"),
-            mime="application/zip",
-            use_container_width=True,
-            key="download_sms_lot2_zip"
-        )
+        st.info(f"ZIP ready. Size: {len(st.session_state['sms_lot2_zip_bytes']) / (1024 * 1024):.2f} MB")
 
+st.download_button(
+    "⬇️ Download SMS Report Lot2 Output ZIP",
+    data=st.session_state["sms_lot2_zip_bytes"],
+    file_name=st.session_state.get("sms_lot2_zip_name", "SMS_Report_Lot2_Output.zip"),
+    mime="application/zip",
+    use_container_width=True,
+    key="download_sms_lot2_zip",
+    on_click="ignore"
+)
 elif selected_report == "3) ARC and Write Off Entries":
 
     st.subheader("📘 ARC and Write Off Entries")
