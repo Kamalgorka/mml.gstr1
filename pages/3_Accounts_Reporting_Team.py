@@ -87,7 +87,7 @@ report_options = [
     "4) WriteOff Loan Collection",
     "5) OTS Data",
     "6) Single Client OD in a Center",
-    "7) OD Amount Less 1000 Non NPA Clients",
+    "7) OD Amount Less 1000 Non NPA Clients"
 ]
 
 selected_report = st.selectbox(
