@@ -4,6 +4,7 @@ from ui import load_global_css
 from accounts_reports.ots_data import process_ots_data
 from accounts_reports.single_client_od import process_single_client_od
 from accounts_reports.od_amount_less_1000 import process_od_amount_less_1000
+from accounts_reports.od_status_two_loans import process_od_status_two_loans
 # =========================================================
 # PAGE CONFIG - must be first Streamlit command
 # =========================================================
@@ -87,7 +88,8 @@ report_options = [
     "4) WriteOff Loan Collection",
     "5) OTS Data",
     "6) Single Client OD in a Center",
-    "7) OD Amount Less 1000 Non NPA Clients"
+    "7) OD Amount Less 1000 Non NPA Clients",
+    "8) OD Status of Two Loans"
 ]
 
 selected_report = st.selectbox(
@@ -719,3 +721,37 @@ elif selected_report == "7) OD Amount Less 1000 Non NPA Clients":
                     file_name="OD_Amount_Less_1000_Non_NPA_Clients.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
+elif report_type == "8) OD Status of Two Loans":
+    st.subheader("OD Status of Two Loans")
+
+    uploaded_file = st.file_uploader(
+        "Upload OD Status input file",
+        type=["xlsx", "xls", "xlsb", "csv"]
+    )
+
+    if uploaded_file and st.button("Generate Report"):
+        try:
+            progress = st.progress(0)
+            status_text = st.empty()
+
+            def update_progress(percent, message):
+                progress.progress(percent)
+                status_text.info(message)
+
+            output_file = process_od_status_two_loans(
+                uploaded_file=uploaded_file,
+                output_dir="outputs",
+                progress_callback=update_progress
+            )
+
+            with open(output_file, "rb") as f:
+                st.success("OD Status of Two Loans Report generated successfully.")
+                st.download_button(
+                    label="Download Report",
+                    data=f,
+                    file_name="OD_Status_of_Two_Loans_Report.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+        except Exception as e:
+            st.error(f"Error: {e}")
