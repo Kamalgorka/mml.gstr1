@@ -323,41 +323,41 @@ def process_ots_data(
 
     _progress(progress_callback, 90, "Creating Excel output file...")
 
-output_path = os.path.join(
-    tempfile.gettempdir(),
-    "OTS_Data_Output.xlsx"
-)
-
-with pd.ExcelWriter(
-    output_path,
-    engine="xlsxwriter",
-    engine_kwargs={
-        "options": {
-            "strings_to_numbers": True,
-            "strings_to_urls": False,
-        }
-    }
-) as writer:
-    final_df.to_excel(
-        writer,
-        index=False,
-        sheet_name="OTS Data"
+    output_path = os.path.join(
+        tempfile.gettempdir(),
+        "OTS_Data_Output.xlsx"
     )
-
-    workbook = writer.book
-    worksheet = writer.sheets["OTS Data"]
-
-    header_format = workbook.add_format({
-        "bold": True,
-        "bg_color": "#D9EAF7",
-        "align": "center",
-        "valign": "vcenter",
-    })
-
-    for col_num, value in enumerate(final_df.columns):
-        worksheet.write(0, col_num, value, header_format)
-
-    worksheet.freeze_panes(1, 0)
-
-_progress(progress_callback, 100, "OTS Data report generated successfully.")
-return output_path
+    
+    with pd.ExcelWriter(
+        output_path,
+        engine="xlsxwriter",
+        engine_kwargs={
+            "options": {
+                "strings_to_numbers": True,
+                "strings_to_urls": False,
+            }
+        }
+    ) as writer:
+        final_df.to_excel(
+            writer,
+            index=False,
+            sheet_name="OTS Data"
+        )
+    
+        workbook = writer.book
+        worksheet = writer.sheets["OTS Data"]
+    
+        header_format = workbook.add_format({
+            "bold": True,
+            "bg_color": "#D9EAF7",
+            "align": "center",
+            "valign": "vcenter",
+        })
+    
+        for col_num, value in enumerate(final_df.columns):
+            worksheet.write(0, col_num, value, header_format)
+    
+        worksheet.freeze_panes(1, 0)
+    
+    _progress(progress_callback, 100, "OTS Data report generated successfully.")
+    return output_path
