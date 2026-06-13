@@ -721,7 +721,7 @@ elif selected_report == "7) OD Amount Less 1000 Non NPA Clients":
                     file_name="OD_Amount_Less_1000_Non_NPA_Clients.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-elif report_type == "8) OD Status of Two Loans":
+elif selected_report == "8) OD Status of Two Loans":
     st.subheader("OD Status of Two Loans")
 
     uploaded_file = st.file_uploader(
