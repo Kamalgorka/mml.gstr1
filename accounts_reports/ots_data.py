@@ -1,6 +1,5 @@
 import os
 import tempfile
-import zipfile
 import pandas as pd
 
 
@@ -322,16 +321,43 @@ def process_ots_data(
     final_df = _remove_offbook_ids(final_df, offbook_ids)
     final_df = _optimize_output_types(final_df)
 
-    _progress(progress_callback, 90, "Creating compressed ZIP output...")
+    _progress(progress_callback, 90, "Creating Excel output file...")
 
-    temp_dir = tempfile.gettempdir()
-    csv_path = os.path.join(temp_dir, "OTS_Data_Output.csv")
-    zip_path = os.path.join(temp_dir, "OTS_Data_Output.zip")
+output_path = os.path.join(
+    tempfile.gettempdir(),
+    "OTS_Data_Output.xlsx"
+)
 
-    final_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+with pd.ExcelWriter(
+    output_path,
+    engine="xlsxwriter",
+    engine_kwargs={
+        "options": {
+            "strings_to_numbers": True,
+            "strings_to_urls": False,
+        }
+    }
+) as writer:
+    final_df.to_excel(
+        writer,
+        index=False,
+        sheet_name="OTS Data"
+    )
 
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-        zf.write(csv_path, arcname="OTS_Data_Output.csv")
+    workbook = writer.book
+    worksheet = writer.sheets["OTS Data"]
 
-    _progress(progress_callback, 100, "OTS Data report generated successfully.")
-    return zip_path
+    header_format = workbook.add_format({
+        "bold": True,
+        "bg_color": "#D9EAF7",
+        "align": "center",
+        "valign": "vcenter",
+    })
+
+    for col_num, value in enumerate(final_df.columns):
+        worksheet.write(0, col_num, value, header_format)
+
+    worksheet.freeze_panes(1, 0)
+
+_progress(progress_callback, 100, "OTS Data report generated successfully.")
+return output_path
