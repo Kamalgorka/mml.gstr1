@@ -666,10 +666,9 @@ elif selected_report == "5) OTS Data":
                     st.download_button(
                         label="⬇️ Download OTS Data Report",
                         data=f,
-                        file_name="OTS_Data_Output.zip",
-                        mime="application/zip"
+                        file_name="OTS_Data_Output.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-
             except Exception as e:
                 st.error(f"Error while generating OTS Data Report: {e}")
 
