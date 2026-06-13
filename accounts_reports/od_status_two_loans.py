@@ -128,7 +128,8 @@ def process_od_status_two_loans(uploaded_file, output_dir, progress_callback=Non
     }])
 
     summary_df = pd.concat([summary_df, grand_total], ignore_index=True)
-
+    # Create output folder if not exists
+    os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "OD_Status_of_Two_Loans_Report.xlsx")
 
     if progress_callback:
