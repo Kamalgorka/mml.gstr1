@@ -204,16 +204,25 @@ def _filter_outstanding_data_with_cust_id_expansion(df):
     df_active = df[status.isin(["ACTIVE"])].copy()
 
     funder = _clean_text_series(df_active["Funder_Description"]).str.upper()
-
-    allowed_funder_mask = funder.isin(OUTSTANDING_ALLOWED_FUNDERS)
-    blank_mask = funder.eq("") | funder.isin(["NAN", "NONE", "NULL"])
-
-    base_mask = allowed_funder_mask | blank_mask
-
     od_days = _clean_numeric(df_active["Od_Days"])
-    piramal_mask = funder.isin(PIRAMAL_60_DPD_FUNDERS)
 
-    base_mask = base_mask & ((~piramal_mask) | (od_days > 60))
+    normal_funder_mask = funder.isin({
+        "ARCILARC_MARCH_2026",
+        "CFMARC_MARCH_2025",
+        "PHOENIX_ARC",
+        "PHOENIX_ARC-1",
+        "BUSINESSLOAN_AL_AP",
+    })
+
+    piramal_mask = funder.isin(PIRAMAL_60_DPD_FUNDERS) & (od_days > 60)
+
+    own_blank_null_mask = (
+        funder.eq("OWN")
+        | funder.eq("")
+        | funder.isin(["NAN", "NONE", "NULL"])
+    ) & (od_days > 90)
+
+    base_mask = normal_funder_mask | piramal_mask | own_blank_null_mask
 
     base_df = df_active[base_mask].copy()
 
@@ -232,7 +241,6 @@ def _filter_outstanding_data_with_cust_id_expansion(df):
 
     return expanded_df
 
-
 def _filter_writeoff_data(df):
     status = _normalize_status(df["Status"])
     return df[status.isin(["WRITE OFF", "WRITEOFF"])].copy()
@@ -241,7 +249,7 @@ def _filter_writeoff_data(df):
 def _calculate_ots_amount(df):
     df["OTS Amount as on May 01"] = (
         _clean_numeric(df["Outstanding_Principal"])
-        + _clean_numeric(df["Outstanding_Interest"])
+        + _clean_numeric(df["Interest_Arrear"])
     )
     return df
 
