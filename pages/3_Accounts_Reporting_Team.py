@@ -19,7 +19,7 @@ load_global_css()
 
 st.markdown("""
 <style>
-/* Selectbox main closed field */
+/* Main selectbox */
 div[data-baseweb="select"] > div {
     background-color: #ffffff !important;
     border: 1.5px solid #ff6b35 !important;
@@ -27,58 +27,43 @@ div[data-baseweb="select"] > div {
     box-shadow: none !important;
 }
 
-/* Selected value text */
-div[data-baseweb="select"] div,
-div[data-baseweb="select"] span {
+div[data-baseweb="select"] * {
     color: #111827 !important;
     font-weight: 700 !important;
     opacity: 1 !important;
 }
 
-/* Dropdown menu container */
-div[data-baseweb="popover"] {
-    opacity: 1 !important;
-}
-
-/* Dropdown options */
-div[role="option"] {
-    color: #111827 !important;
-    font-weight: 700 !important;
-    opacity: 1 !important;
-    background-color: #ffffff !important;
-}
-
-/* Text inside dropdown options */
-div[role="option"] div,
-div[role="option"] span {
-    color: #111827 !important;
-    font-weight: 700 !important;
-    opacity: 1 !important;
-}
-
-/* Hover / selected row */
-div[role="option"]:hover {
-    background-color: #bfdbfe !important;
-    color: #000000 !important;
-}
-
-div[role="option"][aria-selected="true"],
-div[role="option"][aria-selected="true"] > div,
-div[role="option"][aria-selected="true"] span {
+/* Dropdown row hover/focus/selected */
+div[data-baseweb="menu"] li:hover,
+div[data-baseweb="menu"] li[aria-selected="true"],
+div[data-baseweb="menu"] li[aria-current="true"],
+div[data-baseweb="menu"] li[data-highlighted="true"],
+div[role="listbox"] div[role="option"]:hover,
+div[role="listbox"] div[role="option"][aria-selected="true"] {
     background-color: #93c5fd !important;
     color: #000000 !important;
-    font-weight: 800 !important;
 }
 
-div[role="option"]:hover,
-div[role="option"]:hover > div,
-div[role="option"]:hover span {
-    background-color: #bfdbfe !important;
+/* Text inside dropdown rows */
+div[data-baseweb="menu"] li *,
+div[role="listbox"] div[role="option"] * {
+    color: #111827 !important;
+    font-weight: 700 !important;
+}
+
+/* Text inside highlighted rows */
+div[data-baseweb="menu"] li:hover *,
+div[data-baseweb="menu"] li[aria-selected="true"] *,
+div[data-baseweb="menu"] li[aria-current="true"] *,
+div[data-baseweb="menu"] li[data-highlighted="true"] *,
+div[role="listbox"] div[role="option"]:hover *,
+div[role="listbox"] div[role="option"][aria-selected="true"] * {
     color: #000000 !important;
     font-weight: 800 !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 # Hide default Streamlit sidebar navigation
 st.markdown("""
 <style>
