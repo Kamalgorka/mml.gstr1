@@ -17,6 +17,40 @@ st.set_page_config(
 
 load_global_css()
 
+st.markdown("""
+<style>
+/* Make report selectbox clear and sharp */
+div[data-baseweb="select"] > div {
+    background-color: #ffffff !important;
+    border: 1.5px solid #ff6b35 !important;
+    border-radius: 8px !important;
+    color: #111827 !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+}
+
+div[data-baseweb="select"] span {
+    color: #111827 !important;
+    font-weight: 600 !important;
+}
+
+ul[role="listbox"] {
+    background-color: #ffffff !important;
+}
+
+ul[role="listbox"] li {
+    color: #111827 !important;
+    font-weight: 600 !important;
+    background-color: #ffffff !important;
+}
+
+ul[role="listbox"] li:hover {
+    background-color: #fff3ed !important;
+    color: #000000 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Hide default Streamlit sidebar navigation
 st.markdown("""
 <style>
