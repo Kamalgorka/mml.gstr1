@@ -19,38 +19,49 @@ load_global_css()
 
 st.markdown("""
 <style>
-/* Make report selectbox clear and sharp */
+/* Selectbox main closed field */
 div[data-baseweb="select"] > div {
     background-color: #ffffff !important;
     border: 1.5px solid #ff6b35 !important;
     border-radius: 8px !important;
-    color: #111827 !important;
-    font-weight: 600 !important;
     box-shadow: none !important;
 }
 
+/* Selected value text */
+div[data-baseweb="select"] div,
 div[data-baseweb="select"] span {
     color: #111827 !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
 }
 
-ul[role="listbox"] {
-    background-color: #ffffff !important;
+/* Dropdown menu container */
+div[data-baseweb="popover"] {
+    opacity: 1 !important;
 }
 
-ul[role="listbox"] li {
+/* Dropdown options */
+div[role="option"] {
     color: #111827 !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
     background-color: #ffffff !important;
 }
 
-ul[role="listbox"] li:hover {
+/* Text inside dropdown options */
+div[role="option"] div,
+div[role="option"] span {
+    color: #111827 !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+
+/* Hover / selected row */
+div[role="option"]:hover {
     background-color: #fff3ed !important;
-    color: #000000 !important;
 }
 </style>
 """, unsafe_allow_html=True)
-
 # Hide default Streamlit sidebar navigation
 st.markdown("""
 <style>
