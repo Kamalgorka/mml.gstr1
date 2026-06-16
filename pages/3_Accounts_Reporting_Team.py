@@ -62,10 +62,20 @@ div[role="option"]:hover {
     color: #000000 !important;
 }
 
-div[aria-selected="true"] {
+div[role="option"][aria-selected="true"],
+div[role="option"][aria-selected="true"] > div,
+div[role="option"][aria-selected="true"] span {
     background-color: #93c5fd !important;
     color: #000000 !important;
-    font-weight: 700 !important
+    font-weight: 800 !important;
+}
+
+div[role="option"]:hover,
+div[role="option"]:hover > div,
+div[role="option"]:hover span {
+    background-color: #bfdbfe !important;
+    color: #000000 !important;
+    font-weight: 800 !important;
 }
 </style>
 """, unsafe_allow_html=True)
