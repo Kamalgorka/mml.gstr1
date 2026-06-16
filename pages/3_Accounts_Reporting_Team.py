@@ -760,8 +760,8 @@ elif selected_report == "9) Midfin and Finpage Collection Recon":
 
     st.subheader("Midfin and Finpage Collection Recon")
 
-    finpage_jlg = st.file_uploader("Upload Finpage JLG Repayment", type=["xlsx", "xls", "xlsb"], key="finpage_jlg")
-    finpage_il = st.file_uploader("Upload Finpage IL Repayment", type=["xlsx", "xls", "xlsb"], key="finpage_il")
+    finpage_jlg = st.file_uploader("Upload Finpage JLG Repayment", type=["xlsx", "xls", "xlsb", "csv"], key="finpage_jlg")
+    finpage_il = st.file_uploader("Upload Finpage IL Repayment", type=["xlsx", "xls", "xlsb", "csv"], key="finpage_il")
     midfin_regular = st.file_uploader("Upload Midfin Regular Collection", type=["xlsx", "xls", "xlsb"], key="midfin_regular")
     midfin_od = st.file_uploader("Upload Midfin OD Collection", type=["xlsx", "xls", "xlsb"], key="midfin_od")
     branch_master = st.file_uploader("Upload Branch Master", type=["xlsx", "xls", "xlsb"], key="branch_master")
