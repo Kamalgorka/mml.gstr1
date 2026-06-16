@@ -58,7 +58,14 @@ div[role="option"] span {
 
 /* Hover / selected row */
 div[role="option"]:hover {
-    background-color: #fff3ed !important;
+    background-color: #bfdbfe !important;
+    color: #000000 !important;
+}
+
+div[aria-selected="true"] {
+    background-color: #93c5fd !important;
+    color: #000000 !important;
+    font-weight: 700 !important
 }
 </style>
 """, unsafe_allow_html=True)
