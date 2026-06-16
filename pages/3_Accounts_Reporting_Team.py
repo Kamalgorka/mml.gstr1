@@ -5,6 +5,7 @@ from accounts_reports.ots_data import process_ots_data
 from accounts_reports.single_client_od import process_single_client_od
 from accounts_reports.od_amount_less_1000 import process_od_amount_less_1000
 from accounts_reports.od_status_two_loans import process_od_status_two_loans
+from accounts_reports.midfin_finpage_recon import process_midfin_finpage_recon
 # =========================================================
 # PAGE CONFIG - must be first Streamlit command
 # =========================================================
@@ -89,7 +90,8 @@ report_options = [
     "5) OTS Data",
     "6) Single Client OD in a Center",
     "7) OD Amount Less 1000 Non NPA Clients",
-    "8) OD Status of Two Loans"
+    "8) OD Status of Two Loans",
+    "9) Midfin and Finpage Collection Recon"
 ]
 
 selected_report = st.selectbox(
@@ -754,3 +756,34 @@ elif selected_report == "8) OD Status of Two Loans":
 
         except Exception as e:
             st.error(f"Error: {e}")
+elif report_type == "9) Midfin and Finpage Collection Recon":
+
+    st.subheader("Midfin and Finpage Collection Recon")
+
+    finpage_jlg = st.file_uploader("Upload Finpage JLG Repayment", type=["xlsx", "xls", "xlsb"], key="finpage_jlg")
+    finpage_il = st.file_uploader("Upload Finpage IL Repayment", type=["xlsx", "xls", "xlsb"], key="finpage_il")
+    midfin_regular = st.file_uploader("Upload Midfin Regular Collection", type=["xlsx", "xls", "xlsb"], key="midfin_regular")
+    midfin_od = st.file_uploader("Upload Midfin OD Collection", type=["xlsx", "xls", "xlsb"], key="midfin_od")
+    branch_master = st.file_uploader("Upload Branch Master", type=["xlsx", "xls", "xlsb"], key="branch_master")
+
+    if st.button("Generate Report"):
+        if not all([finpage_jlg, finpage_il, midfin_regular, midfin_od, branch_master]):
+            st.error("Please upload all 5 files.")
+        else:
+            with st.spinner("Generating report..."):
+                output_path = process_midfin_finpage_recon(
+                    finpage_jlg,
+                    finpage_il,
+                    midfin_regular,
+                    midfin_od,
+                    branch_master,
+                    output_dir="outputs"
+                )
+
+            with open(output_path, "rb") as f:
+                st.download_button(
+                    label="Download Midfin and Finpage Collection Recon",
+                    data=f,
+                    file_name="Midfin_and_Finpage_Collection_Recon.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
