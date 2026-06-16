@@ -11,8 +11,13 @@ def clean_col(col):
 
 def read_file(file):
     name = file.name.lower()
+
+    if name.endswith(".csv"):
+        return pd.read_csv(file)
+
     if name.endswith(".xlsb"):
         return pd.read_excel(file, engine="pyxlsb")
+
     return pd.read_excel(file)
 
 
