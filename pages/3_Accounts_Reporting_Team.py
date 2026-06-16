@@ -756,7 +756,7 @@ elif selected_report == "8) OD Status of Two Loans":
 
         except Exception as e:
             st.error(f"Error: {e}")
-elif report_type == "9) Midfin and Finpage Collection Recon":
+elif selected_report == "9) Midfin and Finpage Collection Recon":
 
     st.subheader("Midfin and Finpage Collection Recon")
 
