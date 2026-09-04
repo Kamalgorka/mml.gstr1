@@ -68,7 +68,8 @@ ho_report = st.selectbox(
     "Select HO Report",
     [
         "1) GSTR-1 State-wise Automation",
-        "2) HO DayBook Automation"
+        "2) HO DayBook Automation",
+        "3) Disbursement Validation & Automation"
     ],
     key="ho_report_select"
 )
