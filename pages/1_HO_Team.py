@@ -1073,3 +1073,360 @@ elif ho_report == "2) HO DayBook Automation":
         except Exception as e:
             st.error("❌ Error occurred. Details below:")
             st.exception(e)
+
+elif ho_report == "3) Disbursement Validation & Automation":
+
+    st.markdown(
+        '<div class="big-title">📊 Disbursement Validation & Automation</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="sub-title">Upload Folder → Validate → Process → Download</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ======================================================
+    # REQUIRED FILE INFORMATION
+    # ======================================================
+
+    with st.expander("📂 Required Source Files", expanded=False):
+
+        st.markdown(
+            """
+            The selected folder must contain:
+
+            1. **ICICI.xlsx**
+            2. **ICICI IL.xlsx**
+            3. **CASHLESS DISBURSEMENT.xlsx**
+            4. **CASHLESS DISBURSEMENT IL.xlsx**
+            5. **MASTER DATA NEFT.xlsx**
+            6. **ARC.xlsx**
+
+            Other Excel files in the folder will be ignored automatically.
+            """
+        )
+
+    # ======================================================
+    # FOLDER UPLOAD
+    # ======================================================
+
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+
+    uploaded_disb_files = st.file_uploader(
+        "📁 Upload complete Disb Data folder",
+        type=["xlsx"],
+        accept_multiple_files="directory",
+        key="ho_disbursement_folder"
+    )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ======================================================
+    # PROCESS UPLOADED FOLDER
+    # ======================================================
+
+    if uploaded_disb_files:
+
+        files, missing_files = identify_uploaded_files(
+            uploaded_disb_files
+        )
+
+        st.markdown("### 📋 File Validation")
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "Files Uploaded",
+            len(uploaded_disb_files)
+        )
+
+        c2.metric(
+            "Required Files Found",
+            f"{len(files)} / 6"
+        )
+
+        c3.metric(
+            "Missing Files",
+            len(missing_files)
+        )
+
+        st.write("")
+
+        # ==================================================
+        # DISPLAY FILE STATUS
+        # ==================================================
+
+        required_display = {
+            "icici_jlg": "ICICI.xlsx",
+            "icici_il": "ICICI IL.xlsx",
+            "db_jlg": "CASHLESS DISBURSEMENT.xlsx",
+            "db_il": "CASHLESS DISBURSEMENT IL.xlsx",
+            "master": "MASTER DATA NEFT.xlsx",
+            "arc": "ARC.xlsx",
+        }
+
+        col1, col2 = st.columns(2)
+
+        for index, (internal_key, filename) in enumerate(
+            required_display.items()
+        ):
+
+            target_column = col1 if index % 2 == 0 else col2
+
+            with target_column:
+
+                if internal_key in files:
+                    st.success(f"✅ {filename}")
+                else:
+                    st.error(f"❌ {filename}")
+
+        # ==================================================
+        # IF FILES ARE MISSING
+        # ==================================================
+
+        if missing_files:
+
+            st.error(
+                "❌ Report cannot be generated because "
+                "one or more required files are missing."
+            )
+
+            st.write("**Missing files:**")
+
+            for missing_file in missing_files:
+                st.write(f"- {missing_file}")
+
+        # ==================================================
+        # ALL FILES AVAILABLE
+        # ==================================================
+
+        else:
+
+            st.success(
+                "✅ All six required source files identified successfully."
+            )
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # ==============================================
+            # GENERATE REPORT
+            # ==============================================
+
+            if st.button(
+                "🚀 Generate Disbursement Report",
+                use_container_width=True,
+                type="primary",
+                key="generate_disbursement_report"
+            ):
+
+                try:
+
+                    log_activity(
+                        "RUN_REPORT",
+                        "HO - Disbursement Validation & Automation",
+                        "STARTED"
+                    )
+
+                    # Clear any old generated result
+                    st.session_state.pop(
+                        "ho_disbursement_report",
+                        None
+                    )
+
+                    st.session_state.pop(
+                        "ho_disbursement_data",
+                        None
+                    )
+
+                    with st.spinner(
+                        "⚙️ Reading source files and performing calculations..."
+                    ):
+
+                        report_data = run_reports(
+                            files
+                        )
+
+                        excel_bytes = create_excel_report(
+                            report_data
+                        )
+
+                    st.session_state[
+                        "ho_disbursement_report"
+                    ] = excel_bytes
+
+                    st.session_state[
+                        "ho_disbursement_data"
+                    ] = report_data
+
+                    log_activity(
+                        "RUN_REPORT",
+                        "HO - Disbursement Validation & Automation",
+                        "SUCCESS"
+                    )
+
+                    st.success(
+                        "🎉 Disbursement report generated successfully."
+                    )
+
+                except Exception as e:
+
+                    log_activity(
+                        "RUN_REPORT",
+                        "HO - Disbursement Validation & Automation",
+                        "FAILED"
+                    )
+
+                    st.error(
+                        "❌ Report generation failed."
+                    )
+
+                    st.exception(e)
+
+    # ======================================================
+    # RESULTS / DOWNLOAD
+    # ======================================================
+
+    if (
+        "ho_disbursement_report" in st.session_state
+        and
+        "ho_disbursement_data" in st.session_state
+    ):
+
+        st.markdown("---")
+
+        st.markdown("### 📊 Result Summary")
+
+        summary_df = st.session_state[
+            "ho_disbursement_data"
+        ]["Summary"]
+
+        summary_lookup = dict(
+            zip(
+                summary_df["Particular"],
+                summary_df["Count"]
+            )
+        )
+
+        # ==================================================
+        # MAIN METRICS
+        # ==================================================
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        c1.metric(
+            "ICICI JLG",
+            summary_lookup.get(
+                "Records in ICICI JLG",
+                0
+            )
+        )
+
+        c2.metric(
+            "ICICI IL",
+            summary_lookup.get(
+                "Records in ICICI IL",
+                0
+            )
+        )
+
+        c3.metric(
+            "Parivaar Cases",
+            summary_lookup.get(
+                "Total Parivaar Cases",
+                0
+            )
+        )
+
+        c4.metric(
+            "ARC Matches",
+            summary_lookup.get(
+                "Total ARC Matches",
+                0
+            )
+        )
+
+        st.write("")
+
+        c5, c6, c7, c8 = st.columns(4)
+
+        c5.metric(
+            "JLG False Cases",
+            summary_lookup.get(
+                "JLG False Cases",
+                0
+            )
+        )
+
+        c6.metric(
+            "IL False Cases",
+            summary_lookup.get(
+                "IL False Cases",
+                0
+            )
+        )
+
+        c7.metric(
+            "DB JLG Not in ICICI",
+            summary_lookup.get(
+                "DB JLG Not in ICICI",
+                0
+            )
+        )
+
+        c8.metric(
+            "DB IL Not in ICICI",
+            summary_lookup.get(
+                "DB IL Not in ICICI",
+                0
+            )
+        )
+
+        # ==================================================
+        # SUMMARY TABLE
+        # ==================================================
+
+        st.markdown("### 📋 Detailed Summary")
+
+        st.dataframe(
+            summary_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # ==================================================
+        # OUTPUT FILE NAME
+        # ==================================================
+
+        output_name = (
+            "Disbursement_Validation_Report_"
+            + datetime.now().strftime("%d-%m-%Y")
+            + ".xlsx"
+        )
+
+        # ==================================================
+        # DOWNLOAD
+        # ==================================================
+
+        st.download_button(
+            "⬇ Download Disbursement Excel Report",
+            data=st.session_state[
+                "ho_disbursement_report"
+            ],
+            file_name=output_name,
+            mime=(
+                "application/"
+                "vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            use_container_width=True,
+            type="primary",
+            key="download_disbursement_report"
+        )
+
+        st.caption(
+            "The output workbook is downloaded through the browser. "
+            "It is not saved inside the uploaded source folder."
+        )
