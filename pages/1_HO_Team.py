@@ -51,6 +51,14 @@ from datetime import datetime
 from openpyxl.styles import Font, Alignment
 from ui import load_global_css
 from ho_reports.ho_daybook_core import run_daybook_from_uploaded_files
+from ho_reports.disbursement_core import (
+    identify_uploaded_files,
+    run_reports,
+)
+
+from ho_reports.disbursement_excel import (
+    create_excel_report,
+)
 
 load_global_css()
 
