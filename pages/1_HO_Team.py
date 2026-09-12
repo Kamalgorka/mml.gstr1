@@ -59,7 +59,9 @@ from ho_reports.disbursement_core import (
 from ho_reports.disbursement_excel import (
     create_excel_report,
 )
-
+from ho_reports.twinline_combine_core import (
+    generate_twinline_report,
+)
 load_global_css()
 
 st.markdown("""
@@ -77,7 +79,8 @@ ho_report = st.selectbox(
     [
         "1) GSTR-1 State-wise Automation",
         "2) HO DayBook Automation",
-        "3) Disbursement Validation & Automation"
+        "3) Disbursement Validation & Automation",
+        "4) Twinline Combine Report"
     ],
     key="ho_report_select"
 )
