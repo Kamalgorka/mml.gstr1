@@ -1433,3 +1433,184 @@ elif ho_report == "3) Disbursement Validation & Automation":
             "The output workbook is downloaded through the browser. "
             "It is not saved inside the uploaded source folder."
         )
+elif ho_report == "4) Twinline Combine Report":
+
+    st.markdown(
+        '<div class="big-title">🔗 Twinline Combine Report</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="sub-title">'
+        'Upload JLG + IL → Combine → Remove Duplicates → Download'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ======================================================
+    # FILE UPLOAD
+    # ======================================================
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        twinline_jlg = st.file_uploader(
+            "📂 Upload JLG.xlsx",
+            type=["xlsx"],
+            key="twinline_jlg_file"
+        )
+
+    with col2:
+        twinline_il = st.file_uploader(
+            "📂 Upload IL.xlsx",
+            type=["xlsx"],
+            key="twinline_il_file"
+        )
+
+    st.write("")
+
+    # ======================================================
+    # GENERATE BUTTON
+    # ======================================================
+
+    if st.button(
+        "🚀 Generate Twinline Combine Report",
+        type="primary",
+        use_container_width=True,
+        key="generate_twinline_report"
+    ):
+
+        if twinline_jlg is None or twinline_il is None:
+
+            st.error(
+                "❌ Please upload both JLG.xlsx and IL.xlsx."
+            )
+
+        else:
+
+            try:
+
+                log_activity(
+                    "RUN_REPORT",
+                    "HO - Twinline Combine Report",
+                    "STARTED"
+                )
+
+                with st.spinner(
+                    "⚙️ Combining JLG and IL files..."
+                ):
+
+                    twinline_output, twinline_summary = (
+                        generate_twinline_report(
+                            twinline_jlg,
+                            twinline_il
+                        )
+                    )
+
+                st.session_state[
+                    "twinline_output"
+                ] = twinline_output
+
+                st.session_state[
+                    "twinline_summary"
+                ] = twinline_summary
+
+                log_activity(
+                    "RUN_REPORT",
+                    "HO - Twinline Combine Report",
+                    "SUCCESS"
+                )
+
+                st.success(
+                    "🎉 Twinline Combine Report generated successfully."
+                )
+
+            except Exception as e:
+
+                log_activity(
+                    "RUN_REPORT",
+                    "HO - Twinline Combine Report",
+                    "FAILED"
+                )
+
+                st.error(
+                    "❌ Twinline report generation failed."
+                )
+
+                st.exception(e)
+
+    # ======================================================
+    # RESULT SUMMARY + DOWNLOAD
+    # ======================================================
+
+    if (
+        "twinline_output" in st.session_state
+        and
+        "twinline_summary" in st.session_state
+    ):
+
+        st.markdown("---")
+
+        st.markdown("### 📊 Processing Summary")
+
+        summary = st.session_state[
+            "twinline_summary"
+        ]
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+
+        c1.metric(
+            "JLG Records",
+            summary["jlg_records"]
+        )
+
+        c2.metric(
+            "IL Records",
+            summary["il_records"]
+        )
+
+        c3.metric(
+            "Combined Records",
+            summary["combined_records"]
+        )
+
+        c4.metric(
+            "Duplicates Removed",
+            summary["duplicate_records_removed"]
+        )
+
+        c5.metric(
+            "Final Records",
+            summary["final_records"]
+        )
+
+        st.write("")
+
+        output_filename = (
+            "Twinline_Combined_Report_"
+            + datetime.now().strftime("%d-%m-%Y")
+            + ".xlsx"
+        )
+
+        st.download_button(
+            "⬇ Download Twinline Combined Report",
+            data=st.session_state[
+                "twinline_output"
+            ],
+            file_name=output_filename,
+            mime=(
+                "application/"
+                "vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            type="primary",
+            use_container_width=True,
+            key="download_twinline_report"
+        )
+
+        st.caption(
+            "The output file is generated in memory and downloaded "
+            "through the browser. Nothing is saved in the source folder."
+        )
