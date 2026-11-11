@@ -11,6 +11,7 @@ OUTPUT_COLUMNS = [
     "Loan ID",
     "Account ID Match",
     "Payer VPA",
+    "Payee VPA",  # NEW COLUMN
     "Payer Mobile No.",
     "Cust Ref",
     "Upi TxnId",
@@ -26,6 +27,7 @@ JLG_COLUMNS = {
     "Loan ID": "Loan ID",
     "Account ID Match": "Account ID Match",
     "Payer VPA": "Payer VPA",
+    "Payee VPA": "Payee VPA",
     "Payer Mobile No.": "Payer Mobile No.",
     "Cust Ref": "Cust Ref",
     "Upi TxnId": "Upi TxnId",
@@ -41,6 +43,7 @@ IL_COLUMNS = {
     "Account ID": "Loan ID",
     "Account Id Match": "Account ID Match",
     "Payer VPA": "Payer VPA",
+    "Payee VPA": "Payee VPA",
     "Payer Mobile No.": "Payer Mobile No.",
     "Cust Ref": "Cust Ref",
     "Upi TxnId": "Upi TxnId",
